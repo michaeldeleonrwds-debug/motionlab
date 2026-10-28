@@ -21,6 +21,7 @@ import {
   FolderKanban,
   Mic,
   Volume2,
+  Search,
 } from 'lucide-react';
 import { useEditorStore, type LeftSidebarTab } from '../store/useEditorStore';
 import { importMediaFile } from '../engine/mediaImportEngine';
@@ -181,6 +182,7 @@ export const LeftPanel: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mediaFilter, setMediaFilter] = useState<'all' | 'video' | 'audio' | 'image'>('all');
+  const [mediaSearchQuery, setMediaSearchQuery] = useState('');
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [customTitleText, setCustomTitleText] = useState('MOTIONLAB 1080P');
   const [transitionDuration, setTransitionDuration] = useState(0.6);
@@ -298,9 +300,21 @@ export const LeftPanel: React.FC = () => {
     }
   };
 
-  const filteredAssets = project.mediaAssets.filter((asset) =>
-    mediaFilter === 'all' ? true : asset.type === mediaFilter
-  );
+  const filteredAssets = project.mediaAssets.filter((asset) => {
+    if (mediaFilter !== 'all' && asset.type !== mediaFilter) {
+      return false;
+    }
+    if (mediaSearchQuery.trim()) {
+      const q = mediaSearchQuery.toLowerCase().trim();
+      const matchName = asset.name.toLowerCase().includes(q);
+      const matchCodec = asset.codecInfo?.toLowerCase().includes(q);
+      const matchMime = asset.mimeType?.toLowerCase().includes(q);
+      if (!matchName && !matchCodec && !matchMime) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   return (
     <aside className={`${activeLeftTab === 'voice' || activeLeftTab === 'sfx' || activeLeftTab === 'filters' ? 'w-[420px]' : 'w-[336px]'} bg-[#0c0c10] border-r border-[#1f1f26] flex shrink-0 select-none h-full overflow-hidden transition-all duration-150`}>
@@ -456,6 +470,29 @@ export const LeftPanel: React.FC = () => {
                     MP4 • WebM • MOV • MP3 • WAV • PNG • WebP
                   </div>
                 </div>
+              )}
+            </div>
+
+            {/* Search Input with Clear Button */}
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 text-[#71717a] pointer-events-none" />
+              <input
+                type="text"
+                data-testid="media-search-input"
+                value={mediaSearchQuery}
+                onChange={(e) => setMediaSearchQuery(e.target.value)}
+                placeholder="Search media by name or format..."
+                className="w-full bg-[#111116] border border-[#1f1f27] focus:border-[#5e6ad2] rounded-md pl-8 pr-7 py-1 text-xs text-[#f4f4f5] placeholder-[#52525b] outline-none transition-colors"
+              />
+              {mediaSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setMediaSearchQuery('')}
+                  className="absolute right-2 text-[#71717a] hover:text-[#f4f4f5] p-0.5 cursor-pointer"
+                  title="Clear search"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               )}
             </div>
 
