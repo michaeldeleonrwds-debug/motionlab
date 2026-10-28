@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Angora 30s production review</title></head><body style="background:#172018;color:#F4F5EC;font:16px Arial"><div id="status">Preparing source layers</div><canvas></canvas>
+<script type="module">
+import {buildAngoraWorldclass,WORLDCLASS_SCENES} from '/src/engine/angoraWorldclass.ts';
+import {renderCompositionAtTime} from '/src/engine/compositionRenderer.ts';
+import {runDeterministicExport} from '/src/engine/exportEngine.ts';
+import {evaluateClipTransform} from '/src/engine/keyframeEngine.ts';
+import {serializeProjectToJson} from '/src/storage/projectStorage.ts';
+const p=await buildAngoraWorldclass();const images=new Map();
+await Promise.all(p.mediaAssets.filter(a=>a.type==='image').map(async a=>{const im=new Image();im.src=a.objectUrl;await im.decode();images.set(a.id,im);}));
+const canvas=document.querySelector('canvas');
+window.film={p,scenes:WORLDCLASS_SCENES,progress:null,result:null,error:null,
+render(t){renderCompositionAtTime(canvas.getContext('2d'),p,t,{imageElements:images,videoElements:new Map()},{showSafeGuides:false});return canvas.toDataURL('image/png');},
+projectJson(){return serializeProjectToJson(p);},
+audit(){const errs=[];const ids=new Set();for(const c of p.clips){if(ids.has(c.id))errs.push('Duplicate '+c.id);ids.add(c.id);if(c.mediaId&&!p.mediaAssets.some(a=>a.id===c.mediaId))errs.push('Missing media '+c.id);if(c.parentId&&!p.clips.some(a=>a.id===c.parentId))errs.push('Missing parent '+c.id);for(const k of c.keyframes)if(k.time<0||k.time>c.duration+.001)errs.push('Key outside clip '+c.name+' '+k.time);}
+const duration=Math.max(...p.clips.map(c=>c.startTime+c.duration));if(Math.abs(duration-30)>.001)errs.push('Duration '+duration);
+const textBounds=[];const ctx=canvas.getContext('2d');for(const s of WORLDCLASS_SCENES){for(const c of p.clips.filter(c=>c.textStyle&&c.startTime<=s.review&&c.startTime+c.duration>s.review)){const st=c.textStyle,tr=evaluateClipTransform(c,s.review-c.startTime,p.clips,s.review);ctx.font=`${st.fontWeight} ${st.fontSize}px "${st.fontFamily}"`;const w=Math.max(...st.content.split('\n').map(l=>ctx.measureText(l).width+(l.length-1)*(st.letterSpacing||0)))*tr.scale;const h=st.fontSize*1.24*st.content.split('\n').length*tr.scale;textBounds.push({scene:s.id,text:st.content,left:540+tr.x-w/2,right:540+tr.x+w/2,top:960+tr.y-h/2,bottom:960+tr.y+h/2});}}
+return {errors:errs,duration,frames:Math.round(duration*30),nativeText:p.clips.filter(c=>c.textStyle).length,nativeShapes:p.clips.filter(c=>c.shapeStyle).length,images:p.clips.filter(c=>c.mediaId&&c.type==='image').length,keyframes:p.clips.reduce((n,c)=>n+c.keyframes.length,0),textBounds};},
+async export(){try{this.result=await runDeterministicExport(p,p.mediaAssets,{format:'mp4',videoCodec:'H.264',audioCodec:'AAC',resolution:'1080p',fps:30,quality:'high'},s=>{this.progress=s;document.querySelector('#status').textContent=s.message;},new AbortController().signal);}catch(e){this.error=String(e);}}
+};window.film.render(2.8);document.querySelector('#status').textContent='Ready';
+</script></body></html>

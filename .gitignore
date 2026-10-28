@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Production build
+dist/
+dist-ssr/
+
+# Graphify indexes & local analysis
+graphify-out/
+.graphify/
+
+# Environment and logs
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Playwright & test reports
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Obsidian workspace local cache (keep markdown notes)
+.obsidian/workspace*
+.obsidian/cache/
+
+# AI Models & Large Binary Weights (downloaded on demand via scripts)
+server/tts/models/
+*.onnx
+*.safetensors
+*.pt
+*.pth

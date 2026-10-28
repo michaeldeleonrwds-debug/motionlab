@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Angora editorial render review</title></head>
+<body style="background:#101812;color:#F2F3E9;font:16px Arial"><div id="status">Preparing...</div><canvas id="review"></canvas>
+<script type="module">
+import { buildAngoraEditorial } from '/src/engine/angoraEditorial.ts';
+import { renderCompositionAtTime } from '/src/engine/compositionRenderer.ts';
+import { runDeterministicExport } from '/src/engine/exportEngine.ts';
+const p=await buildAngoraEditorial();
+const sources={imageElements:new Map(),videoElements:new Map()};
+await Promise.all(p.mediaAssets.filter(a=>a.type==='image').map(async a=>{
+  const image=new Image(); image.src=a.objectUrl; await image.decode();sources.imageElements.set(a.id,image);
+}));
+window.editorial={project:p,render(t){const canvas=document.querySelector('canvas');renderCompositionAtTime(canvas.getContext('2d'),p,t,sources,{showSafeGuides:false});return canvas.toDataURL('image/png');},progress:null,result:null,error:null,
+  async export(){try{this.result=await runDeterministicExport(p,p.mediaAssets,{format:'mp4',videoCodec:'H.264',audioCodec:'AAC',resolution:'1080p',fps:30,quality:'high'},s=>{this.progress=s;document.querySelector('#status').textContent=s.message;},new AbortController().signal);}catch(e){this.error=String(e);}}};
+window.editorial.render(1.7); document.querySelector('#status').textContent='Ready';
+</script></body></html>

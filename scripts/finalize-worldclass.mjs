@@ -1,0 +1,34 @@
+import fs from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import crypto from 'node:crypto';
+const out='C:/Users/REYMARK/Documents/MotionLab/ANGORA-30s';
+const api='http://motionlab.test/api/mcp/call';
+async function call(name,args={}){const r=await fetch(api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,arguments:args})});return (await r.json()).result;}
+const state=await call('get_state');if(state.state?.projectId!=='proj-1793123822118-ozxxo')throw new Error('Wrong live project');
+await fs.writeFile(`${out}/live-project-verification.json`,JSON.stringify(state,null,2));
+const snapshot=await call('command_run',{id:'build_angora_worldclass_snapshot',params:{}});if(!snapshot.projectJson)throw new Error('Missing live project snapshot');
+await fs.writeFile(`${out}/editable-project.json`,snapshot.projectJson);
+const critic=await call('critique_project',{targetBrandColors:['#A8C256','#172018','#F4F5EC','#D7FF4A']});await fs.writeFile(`${out}/internal-critic-evidence.json`,JSON.stringify(critic,null,2));
+const composition=await call('analyze_composition',{timestamp:24.6});await fs.writeFile(`${out}/composition-tool-evidence.json`,JSON.stringify(composition,null,2));
+const typography=await call('diagnose_typography',{text:'YOUR CLIENTS.',fontSize:115,textColorHex:'#F4F5EC',backgroundColorHex:'#172018'});await fs.writeFile(`${out}/typography-tool-evidence.json`,JSON.stringify(typography,null,2));
+const hash=async p=>crypto.createHash('sha256').update(await fs.readFile(p)).digest('hex');
+const logoUnchanged=await hash('C:/Users/REYMARK/Downloads/Angora Web Services Logo.png')===await hash('public/angora-worldclass/official-logo.png');
+const symbolUnchanged=await hash('C:/Users/REYMARK/Downloads/Lime Green Ribbon A Logo.png')===await hash('public/angora-worldclass/official-symbol.png');
+const proj=JSON.parse(snapshot.projectJson);let tests=[];
+const test=(name,pass,detail)=>{tests.push({name,pass,detail});if(!pass)console.error('FAIL',name,detail);};
+test('Requested live project selected',proj.id==='proj-1793123822118-ozxxo',proj.name);
+test('Exact 30 second sequence',Math.abs(Math.max(...proj.clips.map(c=>c.startTime+c.duration))-30)<.001,'900 frames');
+test('Native editable source',proj.clips.some(c=>c.textStyle)&&proj.clips.some(c=>c.shapeStyle)&&!proj.clips.some(c=>c.type==='video'),'Text, shapes, images, masks, parents, keyframes; no flattened video source');
+test('Full official logo bytes preserved',logoUnchanged,'SHA-256 exact source match');test('Official symbol bytes preserved',symbolUnchanged,'SHA-256 exact source match');
+const copy=proj.clips.map(c=>c.textStyle?.content||'').join('|');for(const required of ['GREAT','IDEAS.','NEED GREAT','EXECUTION.','MORE CLIENTS.','MORE WORK.','SAME TEAM.','MEET','ANGORA.','ONE','PARTNER.','MORE POSSIBILITIES.','YOUR CLIENTS.','YOUR BRAND.','OUR EXECUTION.',"Let's Work Together."])test('Required copy: '+required,copy.includes(required),'Native editable text');
+const assets=new Set(proj.mediaAssets.map(a=>a.id));test('All media references resolve',proj.clips.every(c=>!c.mediaId||assets.has(c.mediaId)),`${assets.size} assets`);
+const lookup=new Map(proj.clips.map(c=>[c.id,c]));test('No parent cycles',proj.clips.every(c=>{const seen=new Set();while(c.parentId){if(seen.has(c.id))return false;seen.add(c.id);c=lookup.get(c.parentId);if(!c)return false;}return true;}),'Hierarchical animation checked');
+const audit=JSON.parse(await fs.readFile(`${out}/technical-audit.json`,'utf8'));test('Clip keyframe bounds',audit.errors.length===0,audit.errors);
+await fs.writeFile(`${out}/tests.json`,JSON.stringify(tests,null,2));
+await fs.mkdir(`${out}/source-assets`,{recursive:true});
+for(const a of proj.mediaAssets)await fs.copyFile(`public/angora-worldclass/${a.name}`,`${out}/source-assets/${a.name}`);
+// Supply a human-readable edit decision list and the exact scene grid.
+const sceneRows=[['01','00:00–00:04','Hook','GREAT IDEAS. / NEED GREAT EXECUTION.','0.0–1.2: staggered type; 1.2–1.7: scale/position response; 3.6: lime iris'],['02','00:04–00:08','Problem','MORE CLIENTS. / MORE WORK. / SAME TEAM.','4.18: workspace; 4.55: brief; 5.2: cutout; 6.0: revision note; 7.72: pile departs'],['03','00:08–00:12','Reveal','MEET ANGORA.','8.25: MEET; 8.4: ANGORA wipe; 8.75: official logo wipe; 11.7: lateral exit'],['04A','00:12–00:14.5','Design','DESIGN','Poster stock, separate MAKE / IT / MATTER type, ink swatch, designer photo'],['04B','00:14.5–00:17','Develop','DEVELOP','Native demo browser; 15.2–16.0 responsive scale/reflow; mobile layout enters'],['04C','00:17–00:19.5','Edit','EDIT / FRAME BY FRAME.','Three photographic gates; offset parallax; linear travelling edit playhead'],['04D','00:19.5–00:22','Automate','AUTOMATE','Route draws; native job ticket moves BRIEF → CREATE → DELIVER'],['05','00:22–00:26','Promise','ONE PARTNER. / MORE POSSIBILITIES.','Two separate work prints settle; physical lime strip sweeps into foreground'],['06','00:26–00:30','Payoff','YOUR CLIENTS. / YOUR BRAND. / OUR EXECUTION.','Original logo; three staggered lines; CTA 27.3; full reading hold from 28.5']];
+await fs.writeFile(`${out}/animation-timeline.csv`,'Scene,Time,Role,Copy,Motion\n'+sceneRows.map(r=>r.map(v=>'"'+v.replaceAll('"','""')+'"').join(',')).join('\n'));
+await fs.writeFile(`${out}/native-layer-timeline.csv`,'ID,Track,Name,Start,End,Keyframes,Parent\n'+proj.clips.map(c=>[c.id,c.trackId,c.name,c.startTime,(c.startTime+c.duration).toFixed(4),c.keyframes.length,c.parentId||''].map(v=>'"'+String(v).replaceAll('"','""')+'"').join(',')).join('\n'));
+console.log(JSON.stringify({liveProject:proj.name,clips:proj.clips.length,tests:tests.length,passed:tests.filter(t=>t.pass).length,internalCriticStored:true,logoUnchanged,symbolUnchanged}));

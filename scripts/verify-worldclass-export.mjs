@@ -1,0 +1,20 @@
+import fs from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+const out='C:/Users/REYMARK/Documents/MotionLab/ANGORA-30s';
+const file=`${out}/ANGORA-One-Partner-30s.mp4`;
+const probe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_format','-show_streams','-of','json',file],{encoding:'utf8'}));
+await fs.writeFile(`${out}/final-export-probe.json`,JSON.stringify(probe,null,2));
+const {spawnSync}=await import('node:child_process');
+const decode=spawnSync('ffmpeg',['-hide_banner','-i',file,'-vf','blackdetect=d=0.12:pix_th=0.025','-af','loudnorm=I=-14:TP=-1.5:LRA=9:print_format=json','-f','null','NUL'],{encoding:'utf8',maxBuffer:10e6});
+await fs.writeFile(`${out}/full-decode-and-audio-check.log`,decode.stderr);
+const matches=decode.stderr.match(/\{\s*"input_i"[\s\S]*?\}/);const loudness=matches?JSON.parse(matches[0]):null;
+const v=probe.streams.find(s=>s.codec_type==='video'),a=probe.streams.find(s=>s.codec_type==='audio');
+const checks={fullDecode:decode.status===0,exactDuration:Number(probe.format.duration)===30,frameCount:v.nb_frames==='900',format:v.width===1080&&v.height===1920&&v.r_frame_rate==='30/1',delivery:v.codec_name==='h264'&&a.codec_name==='aac'&&v.pix_fmt==='yuv420p',color:v.color_space==='bt709'&&v.color_transfer==='bt709'&&v.color_primaries==='bt709',stereo48k:a.sample_rate==='48000'&&a.channels===2,blackIntervals:decode.stderr.match(/black_start:[^\r\n]+/g)||[],loudness};
+await fs.writeFile(`${out}/final-verification.json`,JSON.stringify(checks,null,2));
+console.log(JSON.stringify(checks));
+// Before/after visual evidence from the first pass and the revised native renders.
+const scenes=['02','04C','05'];let args=['-v','error','-y'];for(const s of scenes)args.push('-i',`${out}/qa-before/${s}.png`,'-i',`${out}/preview-frames/${s}.png`);
+const fil=[];for(let i=0;i<6;i++)fil.push(`[${i}:v]scale=270:480,pad=300:525:15:30:color=0x172018,drawtext=fontfile='C\\:/Windows/Fonts/arial.ttf':text='${scenes[Math.floor(i/2)]} ${i%2?'AFTER':'BEFORE'}':fontsize=16:fontcolor=white:x=15:y=8[v${i}]`);
+fil.push('[v0][v1][v2][v3][v4][v5]xstack=inputs=6:layout=0_0|300_0|0_525|300_525|0_1050|300_1050[out]');
+execFileSync('ffmpeg',[...args,'-filter_complex',fil.join(';'),'-map','[out]','-frames:v','1',`${out}/QA-before-after.png`]);
+if(!checks.fullDecode||!checks.exactDuration||!checks.frameCount||!checks.format||!checks.delivery||!checks.color)process.exitCode=1;
