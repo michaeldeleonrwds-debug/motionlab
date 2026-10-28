@@ -22,6 +22,10 @@ import {
   Minimize2,
   Maximize2,
   Maximize,
+  SlidersHorizontal,
+  Keyboard,
+  X,
+  RotateCcw,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
@@ -101,6 +105,11 @@ export const TimelinePanel: React.FC = () => {
         mode: 'scrub';
       }
     | {
+        mode: 'pan';
+        startX: number;
+        startScrollLeft: number;
+      }
+    | {
         mode: 'move-keyframe';
         clipId: string;
         keyframeId: string;
@@ -119,6 +128,26 @@ export const TimelinePanel: React.FC = () => {
       }
   >(null);
 
+  const [isCtrlDown, setIsCtrlDown] = useState(false);
+  const [isNavSettingsOpen, setIsNavSettingsOpen] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'prefs' | 'shortcuts'>('prefs');
+  const timelineNavPreferences = useWorkspaceStore((s) => s.timelineNavPreferences);
+  const setTimelineNavPreferences = useWorkspaceStore((s) => s.setTimelineNavPreferences);
+  const resetTimelineNavPreferences = useWorkspaceStore((s) => s.resetTimelineNavPreferences);
+
+  // Track Ctrl / Meta key state for visual grab cursor on timeline canvas
+  useEffect(() => {
+    const handleKeyChange = (e: KeyboardEvent) => {
+      setIsCtrlDown(Boolean(e.ctrlKey || e.metaKey));
+    };
+    window.addEventListener('keydown', handleKeyChange);
+    window.addEventListener('keyup', handleKeyChange);
+    return () => {
+      window.removeEventListener('keydown', handleKeyChange);
+      window.removeEventListener('keyup', handleKeyChange);
+    };
+  }, []);
+
   const [contextMenu, setContextMenu] = useState<null | {
     x: number;
     y: number;
@@ -128,6 +157,35 @@ export const TimelinePanel: React.FC = () => {
   const totalProjectDuration = getProjectDuration(project.clips);
   const timelineSpanSeconds = Math.max(24, Math.ceil(totalProjectDuration + 10));
   const timelineWidthPx = Math.max(1800, timelineSpanSeconds * timelineZoom);
+
+  // Listen to global Fit Timeline and Scroll Timeline events
+  useEffect(() => {
+    const handleFit = () => {
+      const scroller = scrollContainerRef.current;
+      if (!scroller) return;
+      const scrollerW = scroller.clientWidth || 1000;
+      const dur = Math.max(10, totalProjectDuration);
+      const targetZoom = Math.max(30, Math.min(300, Math.round((scrollerW - 80) / dur)));
+      setTimelineZoom(targetZoom);
+      scroller.scrollLeft = 0;
+    };
+
+    const handleScroll = (e: Event) => {
+      const custom = e as CustomEvent<{ scrollLeft: number }>;
+      const scroller = scrollContainerRef.current;
+      if (scroller && custom.detail?.scrollLeft !== undefined) {
+        scroller.scrollLeft = custom.detail.scrollLeft;
+      }
+    };
+
+    window.addEventListener('motionlab:fit-timeline', handleFit);
+    window.addEventListener('motionlab:scroll-timeline', handleScroll as EventListener);
+
+    return () => {
+      window.removeEventListener('motionlab:fit-timeline', handleFit);
+      window.removeEventListener('motionlab:scroll-timeline', handleScroll as EventListener);
+    };
+  }, [totalProjectDuration, setTimelineZoom]);
 
   const clientXToTimelineSeconds = (clientX: number): number => {
     const scroller = scrollContainerRef.current;
@@ -144,31 +202,95 @@ export const TimelinePanel: React.FC = () => {
         ? 64
         : 40;
 
-  // Alt + Mouse Wheel Zoom on timeline ruler / scroll area
+  // Mouse Wheel navigation: Ctrl/Cmd+Wheel Zoom-to-Cursor, Shift+Wheel Horizontal, Alt+Wheel
   useEffect(() => {
     const scroller = scrollContainerRef.current;
     if (!scroller) return;
 
     const handleWheel = (e: WheelEvent) => {
-      if (e.altKey) {
+      const prefs = useWorkspaceStore.getState().timelineNavPreferences;
+
+      // 1. CTRL / CMD + WHEEL — TIMELINE ZOOM (Zoom to Cursor)
+      if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = e.deltaY < 0 ? 15 : -15;
+        e.stopPropagation();
+
+        const scrollerRect = scroller.getBoundingClientRect();
+        const mouseX = e.clientX - scrollerRect.left;
+        const scrollLeft = scroller.scrollLeft;
         const currentZoom = useEditorStore.getState().timelineZoom;
-        useEditorStore
-          .getState()
-          .setTimelineZoom(Math.max(30, Math.min(260, currentZoom + delta)));
+
+        // Exact time under cursor before zoom
+        const anchorTime = (mouseX + scrollLeft) / currentZoom;
+
+        // Zoom step direction based on scroll and invert preference
+        const isZoomIn = prefs.invertZoom ? e.deltaY > 0 : e.deltaY < 0;
+        const zoomDelta = (isZoomIn ? 20 : -20) * prefs.zoomSensitivity;
+        const newZoom = Math.max(30, Math.min(300, Math.round(currentZoom + zoomDelta)));
+
+        if (newZoom !== currentZoom) {
+          useEditorStore.getState().setTimelineZoom(newZoom);
+
+          // Exact scroll offset so anchorTime remains anchored under mouseX
+          const newScrollLeft = Math.max(0, anchorTime * newZoom - mouseX);
+          scroller.scrollLeft = newScrollLeft;
+
+          // Re-affirm on next animation frame after React layout updates
+          requestAnimationFrame(() => {
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollLeft = newScrollLeft;
+            }
+          });
+        }
+        return;
       }
+
+      // 2. SHIFT + WHEEL — HORIZONTAL SCROLL
+      if (e.shiftKey) {
+        if (prefs.enableShiftWheelScroll) {
+          e.preventDefault();
+          const rawDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+          scroller.scrollLeft += rawDelta * prefs.scrollSensitivity;
+        }
+        return;
+      }
+
+      // 3. ALT + WHEEL — OPTIONAL HORIZONTAL SCROLL
+      if (e.altKey) {
+        if (prefs.enableAltWheelScroll) {
+          e.preventDefault();
+          const rawDelta = e.deltaY || e.deltaX;
+          scroller.scrollLeft += rawDelta * prefs.scrollSensitivity;
+        }
+        return;
+      }
+
+      // 4. NORMAL WHEEL — Vertical scrolling through tracks handled natively
     };
 
     scroller.addEventListener('wheel', handleWheel, { passive: false });
     return () => scroller.removeEventListener('wheel', handleWheel);
   }, []);
 
-  // Pointer drag handling for Scrubbing, Moving Clips, Trimming Clips, and Moving Keyframes
+  // Pointer drag handling for Panning, Scrubbing, Moving Clips, Trimming Clips, and Moving Keyframes
   useEffect(() => {
     if (!dragState) return;
 
+    if (dragState.mode === 'pan') {
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+    }
+
     const handleMouseMove = (e: MouseEvent) => {
+      if (dragState.mode === 'pan') {
+        const scroller = scrollContainerRef.current;
+        if (scroller) {
+          const deltaX = e.clientX - dragState.startX;
+          scroller.scrollLeft = Math.max(0, dragState.startScrollLeft - deltaX);
+        }
+        return;
+      }
+
       if (dragState.mode === 'scrub') {
         const t = clientXToTimelineSeconds(e.clientX);
         setCurrentTime(t);
@@ -281,6 +403,8 @@ export const TimelinePanel: React.FC = () => {
     };
 
     const handleMouseUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       setDragState(null);
       setActiveSnapTime(null);
     };
@@ -288,6 +412,8 @@ export const TimelinePanel: React.FC = () => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -760,6 +886,251 @@ export const TimelinePanel: React.FC = () => {
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
+
+          <div className="h-4 w-px bg-[#2A3341] mx-0.5" />
+
+          {/* Navigation Preferences Popover Button */}
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="timeline-nav-settings-btn"
+              onClick={() => setIsNavSettingsOpen(!isNavSettingsOpen)}
+              className={`p-1 rounded transition-colors cursor-pointer ${
+                isNavSettingsOpen
+                  ? 'bg-[#8B82F6]/20 text-[#8B82F6]'
+                  : 'text-[#94A3B8] hover:text-[#E8EDF5]'
+              }`}
+              title="Timeline Navigation & Hotkeys Preferences"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+            </button>
+
+            {isNavSettingsOpen && (
+              <div
+                data-testid="timeline-nav-settings-popover"
+                className="absolute right-0 bottom-full mb-2 w-80 bg-[#141A23] border border-[#2A3341] rounded-lg shadow-2xl p-3.5 z-50 text-xs text-[#E8EDF5]"
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-[#2A3341] mb-2.5">
+                  <span className="font-semibold text-xs tracking-wide uppercase text-[#8B82F6]">
+                    Timeline Navigation
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsNavSettingsOpen(false)}
+                    className="p-0.5 text-[#94A3B8] hover:text-[#E8EDF5] cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Sub-tabs */}
+                <div className="flex items-center bg-[#0B0F16] p-0.5 rounded mb-3 border border-[#2A3341]">
+                  <button
+                    type="button"
+                    data-testid="nav-tab-prefs"
+                    onClick={() => setActiveSettingsTab('prefs')}
+                    className={`flex-1 py-1 rounded text-center font-medium cursor-pointer transition-colors ${
+                      activeSettingsTab === 'prefs'
+                        ? 'bg-[#8B82F6] text-white'
+                        : 'text-[#94A3B8] hover:text-[#E8EDF5]'
+                    }`}
+                  >
+                    Preferences
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="nav-tab-shortcuts"
+                    onClick={() => setActiveSettingsTab('shortcuts')}
+                    className={`flex-1 py-1 rounded text-center font-medium cursor-pointer transition-colors ${
+                      activeSettingsTab === 'shortcuts'
+                        ? 'bg-[#8B82F6] text-white'
+                        : 'text-[#94A3B8] hover:text-[#E8EDF5]'
+                    }`}
+                  >
+                    Hotkeys
+                  </button>
+                </div>
+
+                {activeSettingsTab === 'prefs' ? (
+                  <div className="space-y-3">
+                    {/* Zoom Sensitivity */}
+                    <div>
+                      <div className="flex justify-between text-[11px] text-[#94A3B8] mb-1">
+                        <span>Zoom Sensitivity</span>
+                        <span className="font-mono text-[#E8EDF5]">
+                          {timelineNavPreferences.zoomSensitivity.toFixed(1)}x
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        data-testid="pref-zoom-sensitivity-slider"
+                        min="0.5"
+                        max="2.5"
+                        step="0.1"
+                        value={timelineNavPreferences.zoomSensitivity}
+                        onChange={(e) =>
+                          setTimelineNavPreferences({
+                            zoomSensitivity: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full accent-[#8B82F6]"
+                      />
+                    </div>
+
+                    {/* Scroll Sensitivity */}
+                    <div>
+                      <div className="flex justify-between text-[11px] text-[#94A3B8] mb-1">
+                        <span>Scroll Sensitivity</span>
+                        <span className="font-mono text-[#E8EDF5]">
+                          {timelineNavPreferences.scrollSensitivity.toFixed(1)}x
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        data-testid="pref-scroll-sensitivity-slider"
+                        min="0.5"
+                        max="2.5"
+                        step="0.1"
+                        value={timelineNavPreferences.scrollSensitivity}
+                        onChange={(e) =>
+                          setTimelineNavPreferences({
+                            scrollSensitivity: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full accent-[#8B82F6]"
+                      />
+                    </div>
+
+                    {/* Toggles */}
+                    <div className="pt-1 space-y-2 border-t border-[#2A3341]/60 text-[11px]">
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="text-[#94A3B8]">Invert Zoom Direction</span>
+                        <input
+                          type="checkbox"
+                          data-testid="pref-invert-zoom-toggle"
+                          checked={timelineNavPreferences.invertZoom}
+                          onChange={(e) =>
+                            setTimelineNavPreferences({
+                              invertZoom: e.target.checked,
+                            })
+                          }
+                          className="accent-[#8B82F6] cursor-pointer"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="text-[#94A3B8]">Enable Ctrl/Cmd + Drag Pan</span>
+                        <input
+                          type="checkbox"
+                          data-testid="pref-ctrl-drag-toggle"
+                          checked={timelineNavPreferences.enableCtrlDragPan}
+                          onChange={(e) =>
+                            setTimelineNavPreferences({
+                              enableCtrlDragPan: e.target.checked,
+                            })
+                          }
+                          className="accent-[#8B82F6] cursor-pointer"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="text-[#94A3B8]">Shift + Wheel Horizontal Scroll</span>
+                        <input
+                          type="checkbox"
+                          data-testid="pref-shift-wheel-toggle"
+                          checked={timelineNavPreferences.enableShiftWheelScroll}
+                          onChange={(e) =>
+                            setTimelineNavPreferences({
+                              enableShiftWheelScroll: e.target.checked,
+                            })
+                          }
+                          className="accent-[#8B82F6] cursor-pointer"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="text-[#94A3B8]">Alt + Wheel Horizontal Scroll</span>
+                        <input
+                          type="checkbox"
+                          data-testid="pref-alt-wheel-toggle"
+                          checked={timelineNavPreferences.enableAltWheelScroll}
+                          onChange={(e) =>
+                            setTimelineNavPreferences({
+                              enableAltWheelScroll: e.target.checked,
+                            })
+                          }
+                          className="accent-[#8B82F6] cursor-pointer"
+                        />
+                      </label>
+                    </div>
+
+                    {/* Reset Button */}
+                    <button
+                      type="button"
+                      data-testid="pref-reset-defaults-btn"
+                      onClick={() => resetTimelineNavPreferences()}
+                      className="w-full mt-2 py-1 px-2 bg-[#1D2531] hover:bg-[#2A3341] border border-[#2A3341] rounded text-[11px] font-medium text-[#94A3B8] hover:text-[#E8EDF5] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset to Defaults</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto text-[11px] divide-y divide-[#2A3341]/40 pr-1">
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Ctrl/Cmd + Wheel</span>
+                      <span className="font-mono text-[#E8EDF5]">Zoom to Cursor</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Ctrl/Cmd + Drag</span>
+                      <span className="font-mono text-[#E8EDF5]">Pan Timeline</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Shift + Wheel</span>
+                      <span className="font-mono text-[#E8EDF5]">Horizontal Scroll</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Normal Wheel</span>
+                      <span className="font-mono text-[#E8EDF5]">Vertical Track Scroll</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Space</span>
+                      <span className="font-mono text-[#E8EDF5]">Play / Pause</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">+ or = / -</span>
+                      <span className="font-mono text-[#E8EDF5]">Zoom In / Out</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">F or Shift+Z</span>
+                      <span className="font-mono text-[#E8EDF5]">Fit Sequence</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Home / End</span>
+                      <span className="font-mono text-[#E8EDF5]">Jump to Start / End</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">← / →</span>
+                      <span className="font-mono text-[#E8EDF5]">Step 1 Frame</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Shift + ← / →</span>
+                      <span className="font-mono text-[#E8EDF5]">Step 10 Frames</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">S</span>
+                      <span className="font-mono text-[#E8EDF5]">Split Clip at Playhead</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Delete / Backspace</span>
+                      <span className="font-mono text-[#E8EDF5]">Delete Selected Clip</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-[#94A3B8]">Ctrl/Cmd + Z</span>
+                      <span className="font-mono text-[#E8EDF5]">Undo / Redo (+Shift)</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -859,6 +1230,22 @@ export const TimelinePanel: React.FC = () => {
           onScroll={handleLanesScroll}
           data-testid="timeline-scroll-area"
           onMouseDown={(e) => {
+            if (
+              (e.ctrlKey || e.metaKey || e.button === 1) &&
+              timelineNavPreferences.enableCtrlDragPan
+            ) {
+              e.preventDefault();
+              e.stopPropagation();
+              const scroller = scrollContainerRef.current;
+              if (scroller) {
+                setDragState({
+                  mode: 'pan',
+                  startX: e.clientX,
+                  startScrollLeft: scroller.scrollLeft,
+                });
+              }
+              return;
+            }
             if (e.target === e.currentTarget) {
               selectClip(null);
             }
@@ -873,12 +1260,32 @@ export const TimelinePanel: React.FC = () => {
             <div
               data-testid="timeline-ruler"
               onMouseDown={(e) => {
+                if (
+                  (e.ctrlKey || e.metaKey || e.button === 1) &&
+                  timelineNavPreferences.enableCtrlDragPan
+                ) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const scroller = scrollContainerRef.current;
+                  if (scroller) {
+                    setDragState({
+                      mode: 'pan',
+                      startX: e.clientX,
+                      startScrollLeft: scroller.scrollLeft,
+                    });
+                  }
+                  return;
+                }
                 setIsPlaying(false);
                 const t = clientXToTimelineSeconds(e.clientX);
                 setCurrentTime(t);
                 setDragState({ mode: 'scrub' });
               }}
-              className="h-7 bg-[#0d0d12] border-b border-[#1f1f26] relative cursor-pointer sticky top-0 z-30"
+              className={`h-7 bg-[#0d0d12] border-b border-[#1f1f26] relative sticky top-0 z-30 select-none ${
+                isCtrlDown && timelineNavPreferences.enableCtrlDragPan
+                  ? 'cursor-grab'
+                  : 'cursor-pointer'
+              }`}
             >
               {rulerTicks.map((sec) => {
                 const left = sec * timelineZoom;
@@ -916,6 +1323,22 @@ export const TimelinePanel: React.FC = () => {
                     data-testid={`timeline-track-lane-${track.id}`}
                     data-track-id={track.id}
                     onMouseDown={(e) => {
+                      if (
+                        (e.ctrlKey || e.metaKey || e.button === 1) &&
+                        timelineNavPreferences.enableCtrlDragPan
+                      ) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const scroller = scrollContainerRef.current;
+                        if (scroller) {
+                          setDragState({
+                            mode: 'pan',
+                            startX: e.clientX,
+                            startScrollLeft: scroller.scrollLeft,
+                          });
+                        }
+                        return;
+                      }
                       if (e.target === e.currentTarget) {
                         selectClip(null);
                         setIsPlaying(false);
@@ -945,6 +1368,10 @@ export const TimelinePanel: React.FC = () => {
                     style={{ height: `${trackHeightPx}px` }}
                     className={`relative transition-colors border-b border-[#2A3341]/40 ${
                       !track.visible ? 'opacity-40 bg-[#070A0F]' : 'bg-[#0B0F16]'
+                    } ${
+                      isCtrlDown && timelineNavPreferences.enableCtrlDragPan
+                        ? 'cursor-grab'
+                        : ''
                     }`}
                   >
                     {trackClips.map((clip) => renderClipCard(clip, track))}

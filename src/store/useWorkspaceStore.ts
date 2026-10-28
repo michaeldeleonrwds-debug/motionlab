@@ -26,6 +26,24 @@ export interface WorkspaceCollapsedState {
   aiDrawer: boolean;
 }
 
+export interface TimelineNavPreferences {
+  zoomSensitivity: number; // default 1.0 (range 0.5 - 2.0)
+  scrollSensitivity: number; // default 1.0 (range 0.5 - 2.0)
+  invertZoom: boolean; // default false
+  enableCtrlDragPan: boolean; // default true
+  enableShiftWheelScroll: boolean; // default true
+  enableAltWheelScroll: boolean; // default true
+}
+
+export const DEFAULT_TIMELINE_NAV_PREFS: TimelineNavPreferences = {
+  zoomSensitivity: 1.0,
+  scrollSensitivity: 1.0,
+  invertZoom: false,
+  enableCtrlDragPan: true,
+  enableShiftWheelScroll: true,
+  enableAltWheelScroll: true,
+};
+
 interface WorkspaceState {
   // Active workspace mode
   activeWorkspace: WorkspaceId;
@@ -50,6 +68,11 @@ interface WorkspaceState {
   // Timeline display state
   timelineDensity: TimelineDensity;
   setTimelineDensity: (density: TimelineDensity) => void;
+
+  // Timeline navigation preferences
+  timelineNavPreferences: TimelineNavPreferences;
+  setTimelineNavPreferences: (prefs: Partial<TimelineNavPreferences>) => void;
+  resetTimelineNavPreferences: () => void;
 
   // Command Palette (Cmd/Ctrl + K)
   isCommandPaletteOpen: boolean;
@@ -80,6 +103,7 @@ function loadSavedLayout(): {
   workspace?: WorkspaceId;
   panelSizes?: WorkspacePanelSizes;
   timelineDensity?: TimelineDensity;
+  timelineNavPreferences?: Partial<TimelineNavPreferences>;
 } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -96,6 +120,7 @@ function saveLayout(data: {
   workspace: WorkspaceId;
   panelSizes: WorkspacePanelSizes;
   timelineDensity: TimelineDensity;
+  timelineNavPreferences: TimelineNavPreferences;
 }) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -123,6 +148,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         workspace,
         panelSizes: state.panelSizes,
         timelineDensity: state.timelineDensity,
+        timelineNavPreferences: state.timelineNavPreferences,
       });
 
       return { activeWorkspace: workspace, collapsed: newCollapsed };
@@ -146,6 +172,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         workspace: state.activeWorkspace,
         panelSizes: newSizes,
         timelineDensity: state.timelineDensity,
+        timelineNavPreferences: state.timelineNavPreferences,
       });
       return { panelSizes: newSizes };
     });
@@ -189,8 +216,50 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         workspace: state.activeWorkspace,
         panelSizes: state.panelSizes,
         timelineDensity: density,
+        timelineNavPreferences: state.timelineNavPreferences,
       });
       return { timelineDensity: density };
+    });
+  },
+
+  timelineNavPreferences: {
+    ...DEFAULT_TIMELINE_NAV_PREFS,
+    ...(initialSaved.timelineNavPreferences || {}),
+  },
+
+  setTimelineNavPreferences: (prefs) => {
+    set((state) => {
+      const nextPrefs: TimelineNavPreferences = {
+        ...state.timelineNavPreferences,
+        ...prefs,
+        zoomSensitivity: prefs.zoomSensitivity !== undefined
+          ? Math.max(0.5, Math.min(2.5, prefs.zoomSensitivity))
+          : state.timelineNavPreferences.zoomSensitivity,
+        scrollSensitivity: prefs.scrollSensitivity !== undefined
+          ? Math.max(0.5, Math.min(2.5, prefs.scrollSensitivity))
+          : state.timelineNavPreferences.scrollSensitivity,
+      };
+
+      saveLayout({
+        workspace: state.activeWorkspace,
+        panelSizes: state.panelSizes,
+        timelineDensity: state.timelineDensity,
+        timelineNavPreferences: nextPrefs,
+      });
+
+      return { timelineNavPreferences: nextPrefs };
+    });
+  },
+
+  resetTimelineNavPreferences: () => {
+    set((state) => {
+      saveLayout({
+        workspace: state.activeWorkspace,
+        panelSizes: state.panelSizes,
+        timelineDensity: state.timelineDensity,
+        timelineNavPreferences: DEFAULT_TIMELINE_NAV_PREFS,
+      });
+      return { timelineNavPreferences: DEFAULT_TIMELINE_NAV_PREFS };
     });
   },
 

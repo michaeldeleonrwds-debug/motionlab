@@ -24,6 +24,7 @@ import {
   executeMcpToolCall,
   MOTIONLAB_MCP_TOOLS,
 } from './engine/mcpEngine';
+import { getProjectDuration } from './engine/timelineEngine';
 import { Minimize2, Volume2, Mic } from 'lucide-react';
 
 declare global {
@@ -320,15 +321,55 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Left / Right Arrow: Frame stepping
+      // Zoom In (+ or =)
+      if ((e.key === '=' || e.key === '+') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        state.setTimelineZoom(Math.min(300, state.timelineZoom + 20));
+        return;
+      }
+
+      // Zoom Out (- or _)
+      if ((e.key === '-' || e.key === '_') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        state.setTimelineZoom(Math.max(30, state.timelineZoom - 20));
+        return;
+      }
+
+      // Fit Sequence (F or Shift+Z)
+      if (
+        (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) ||
+        (e.shiftKey && e.key.toLowerCase() === 'z' && !e.ctrlKey && !e.metaKey && !e.altKey)
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('motionlab:fit-timeline'));
+        return;
+      }
+
+      // Home: Jump to sequence start (0s)
+      if (e.key === 'Home') {
+        e.preventDefault();
+        state.setCurrentTime(0);
+        window.dispatchEvent(new CustomEvent('motionlab:scroll-timeline', { detail: { scrollLeft: 0 } }));
+        return;
+      }
+
+      // End: Jump to sequence end
+      if (e.key === 'End') {
+        e.preventDefault();
+        const dur = getProjectDuration(state.project.clips);
+        state.setCurrentTime(dur);
+        return;
+      }
+
+      // Left / Right Arrow: Frame stepping (1 frame normal, 10 frames with Shift)
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        state.stepFrames(-1);
+        state.stepFrames(e.shiftKey ? -10 : -1);
         return;
       }
       if (e.key === 'ArrowRight') {
         e.preventDefault();
-        state.stepFrames(1);
+        state.stepFrames(e.shiftKey ? 10 : 1);
         return;
       }
     };
