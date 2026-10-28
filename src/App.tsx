@@ -1,19 +1,30 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TopBar } from './components/TopBar';
 import { LeftPanel } from './components/LeftPanel';
 import { CenterPreview } from './components/CenterPreview';
 import { RightInspector } from './components/RightInspector';
 import { TimelinePanel } from './components/TimelinePanel';
 import { AiMcpPanel } from './components/AiMcpPanel';
+import { VideoFxStudioPanel } from './components/VideoFxStudioPanel';
+import { ScopesPanel } from './components/ScopesPanel';
+import { SoundFxStudioPanel } from './sfx/SoundFxStudioPanel';
+import { VoiceStudioPanel } from './voicebox/VoiceStudioPanel';
+import { MemoryVaultPanel } from './components/MemoryVaultPanel';
+import { SkillsLibraryPanel } from './components/SkillsLibraryPanel';
+import { AudioMeters } from './components/workspace/AudioMeters';
+import { SplitResizer } from './components/workspace/SplitResizer';
+import { CommandPalette } from './components/workspace/CommandPalette';
 import { ExportModal } from './components/ExportModal';
 import { ProjectModal } from './components/ProjectModal';
 import { McpConfigModal } from './components/McpConfigModal';
 import { useEditorStore } from './store/useEditorStore';
+import { useWorkspaceStore } from './store/useWorkspaceStore';
 import {
   buildCompactProjectSummary,
   executeMcpToolCall,
   MOTIONLAB_MCP_TOOLS,
 } from './engine/mcpEngine';
+import { Minimize2, Volume2, Mic } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -30,6 +41,20 @@ export const App: React.FC = () => {
   const initFromStorage = useEditorStore((s) => s.initFromStorage);
   const project = useEditorStore((s) => s.project);
   const isAiDrawerOpen = useEditorStore((s) => s.isAiDrawerOpen);
+
+  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace);
+  const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
+  const panelSizes = useWorkspaceStore((s) => s.panelSizes);
+  const setPanelSize = useWorkspaceStore((s) => s.setPanelSize);
+  const resetPanelSizes = useWorkspaceStore((s) => s.resetPanelSizes);
+  const isMonitorMaximized = useWorkspaceStore((s) => s.isMonitorMaximized);
+  const toggleMonitorMaximized = useWorkspaceStore((s) => s.toggleMonitorMaximized);
+  const isCommandPaletteOpen = useWorkspaceStore((s) => s.isCommandPaletteOpen);
+  const toggleCommandPalette = useWorkspaceStore((s) => s.toggleCommandPalette);
+  const setCommandPaletteOpen = useWorkspaceStore((s) => s.setCommandPaletteOpen);
+
+  // Audio workspace sub-tab: 'sfx' or 'voice'
+  const [audioSubTab, setAudioSubTab] = useState<'sfx' | 'voice'>('sfx');
 
   useEffect(() => {
     void initFromStorage();
@@ -132,7 +157,7 @@ export const App: React.FC = () => {
     }).catch(() => {});
   }, [project]);
 
-  // Global NLE Keyboard Shortcuts (Section 13)
+  // Global NLE Keyboard Shortcuts & Workspace Switching
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -157,6 +182,42 @@ export const App: React.FC = () => {
             target.isContentEditable)
       );
 
+      // Ctrl/Cmd + K: Command Palette
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        toggleCommandPalette();
+        return;
+      }
+
+      // Alt + 1..5: Workspace Switching
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveWorkspace('edit');
+          return;
+        }
+        if (e.key === '2') {
+          e.preventDefault();
+          setActiveWorkspace('motion');
+          return;
+        }
+        if (e.key === '3') {
+          e.preventDefault();
+          setActiveWorkspace('color');
+          return;
+        }
+        if (e.key === '4') {
+          e.preventDefault();
+          setActiveWorkspace('audio');
+          return;
+        }
+        if (e.key === '5') {
+          e.preventDefault();
+          setActiveWorkspace('ai');
+          return;
+        }
+      }
+
       // Ctrl/Cmd + S always saves even inside inputs
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
@@ -175,7 +236,8 @@ export const App: React.FC = () => {
         !e.altKey &&
         !state.isExportModalOpen &&
         !state.isProjectModalOpen &&
-        !state.isMcpModalOpen
+        !state.isMcpModalOpen &&
+        !isCommandPaletteOpen
       ) {
         e.preventDefault();
         e.stopPropagation();
@@ -198,10 +260,14 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Escape: close active modal or deselect clip
+      // Escape: close active modal, command palette, maximized preview, or deselect clip
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (state.isExportModalOpen) {
+        if (isCommandPaletteOpen) {
+          setCommandPaletteOpen(false);
+        } else if (isMonitorMaximized) {
+          toggleMonitorMaximized();
+        } else if (state.isExportModalOpen) {
           state.setExportModalOpen(false);
         } else if (state.isProjectModalOpen) {
           state.setProjectModalOpen(false);
@@ -217,7 +283,8 @@ export const App: React.FC = () => {
       if (
         state.isExportModalOpen ||
         state.isProjectModalOpen ||
-        state.isMcpModalOpen
+        state.isMcpModalOpen ||
+        isCommandPaletteOpen
       ) {
         return;
       }
@@ -268,35 +335,349 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, []);
+  }, [
+    isCommandPaletteOpen,
+    isMonitorMaximized,
+    setActiveWorkspace,
+    setCommandPaletteOpen,
+    toggleCommandPalette,
+    toggleMonitorMaximized,
+  ]);
 
   return (
     <div
       data-testid="motionlab-app"
-      className="h-screen w-screen flex flex-col bg-[#09090b] text-[#f4f4f5] overflow-hidden select-none"
+      className="h-screen w-screen flex flex-col bg-[#0B0F16] text-[#E8EDF5] overflow-hidden select-none"
     >
       {/* Top Application Bar */}
       <TopBar />
 
-      {/* Main Workspace: Full-Height Left Sidebar + Center Workspace + Full-Height Right Copilot Drawer */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Full-Height Left Sidebar: Linear Dock + Media / Titles / Audio / SFX / Voice / Color / FX / Bins */}
-        <LeftPanel />
-
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-          {/* Upper Editor: Center Program Monitor + Right Inspector */}
-          <div className="flex-1 flex min-h-0 overflow-hidden">
+      {/* Main Production Workspace Body */}
+      <div className="flex-1 flex min-h-0 overflow-hidden relative">
+        {/* Full-Screen Maximized Program Monitor Mode */}
+        {isMonitorMaximized ? (
+          <div className="flex-1 flex flex-col h-full relative bg-[#070A0F]">
             <CenterPreview />
-            {!isAiDrawerOpen && <RightInspector />}
+            <button
+              type="button"
+              onClick={toggleMonitorMaximized}
+              className="absolute top-12 right-4 z-40 bg-[#141A23]/90 hover:bg-[#1D2531] border border-[#2A3341] text-[#E8EDF5] px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-xl cursor-pointer backdrop-blur-xs"
+              title="Exit Maximized View (Esc)"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>Restore Workspace (Esc)</span>
+            </button>
           </div>
+        ) : (
+          <>
+            {/* 1. EDIT WORKSPACE: Left Sidebar + Center Monitor + Right Inspector + Bottom Timeline */}
+            {activeWorkspace === 'edit' && (
+              <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+                <LeftPanel />
+                <SplitResizer
+                  direction="horizontal"
+                  onResize={(delta) =>
+                    setPanelSize(
+                      'leftSidebarWidth',
+                      panelSizes.leftSidebarWidth + delta
+                    )
+                  }
+                  onReset={resetPanelSizes}
+                />
 
-          {/* Bottom Multitrack Timeline */}
-          <TimelinePanel />
-        </div>
+                <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                  <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+                    <CenterPreview />
+                    {!isAiDrawerOpen && (
+                      <>
+                        <SplitResizer
+                          direction="horizontal"
+                          onResize={(delta) =>
+                            setPanelSize(
+                              'rightInspectorWidth',
+                              panelSizes.rightInspectorWidth - delta
+                            )
+                          }
+                          onReset={resetPanelSizes}
+                        />
+                        <RightInspector />
+                      </>
+                    )}
+                  </div>
 
-        {/* Full-Height AI & MCP Copilot Drawer */}
-        {isAiDrawerOpen && <AiMcpPanel />}
+                  <SplitResizer
+                    direction="vertical"
+                    onResize={(delta) =>
+                      setPanelSize(
+                        'timelineHeight',
+                        panelSizes.timelineHeight - delta
+                      )
+                    }
+                    onReset={resetPanelSizes}
+                  />
+                  <TimelinePanel />
+                </div>
+              </div>
+            )}
+
+            {/* 2. MOTION WORKSPACE: Left Motion/Titles + Center Monitor + Right Motion Inspector + Bottom Timeline */}
+            {activeWorkspace === 'motion' && (
+              <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+                <LeftPanel />
+                <SplitResizer
+                  direction="horizontal"
+                  onResize={(delta) =>
+                    setPanelSize(
+                      'leftSidebarWidth',
+                      panelSizes.leftSidebarWidth + delta
+                    )
+                  }
+                  onReset={resetPanelSizes}
+                />
+
+                <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                  <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+                    <CenterPreview />
+                    {!isAiDrawerOpen && (
+                      <>
+                        <SplitResizer
+                          direction="horizontal"
+                          onResize={(delta) =>
+                            setPanelSize(
+                              'rightInspectorWidth',
+                              panelSizes.rightInspectorWidth - delta
+                            )
+                          }
+                          onReset={resetPanelSizes}
+                        />
+                        <RightInspector />
+                      </>
+                    )}
+                  </div>
+
+                  <SplitResizer
+                    direction="vertical"
+                    onResize={(delta) =>
+                      setPanelSize(
+                        'timelineHeight',
+                        panelSizes.timelineHeight - delta
+                      )
+                    }
+                    onReset={resetPanelSizes}
+                  />
+                  <TimelinePanel />
+                </div>
+              </div>
+            )}
+
+            {/* 3. COLOR WORKSPACE: Center Monitor + Right Video FX Studio + Bottom Video Scopes */}
+            {activeWorkspace === 'color' && (
+              <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+                  <CenterPreview />
+                  <SplitResizer
+                    direction="horizontal"
+                    onResize={(delta) =>
+                      setPanelSize(
+                        'rightInspectorWidth',
+                        panelSizes.rightInspectorWidth - delta
+                      )
+                    }
+                    onReset={resetPanelSizes}
+                  />
+                  <div
+                    style={{
+                      width: `${Math.max(380, panelSizes.rightInspectorWidth)}px`,
+                    }}
+                    className="flex shrink-0 h-full overflow-hidden bg-[#141A23] border-l border-[#2A3341]"
+                  >
+                    <VideoFxStudioPanel />
+                  </div>
+                </div>
+
+                <SplitResizer
+                  direction="vertical"
+                  onResize={(delta) =>
+                    setPanelSize(
+                      'timelineHeight',
+                      panelSizes.timelineHeight - delta
+                    )
+                  }
+                  onReset={resetPanelSizes}
+                />
+                <div
+                  style={{ height: `${panelSizes.timelineHeight}px` }}
+                  className="bg-[#0B0F16] border-t border-[#2A3341] flex flex-col shrink-0 overflow-hidden"
+                >
+                  <ScopesPanel />
+                </div>
+              </div>
+            )}
+
+            {/* 4. AUDIO WORKSPACE: Left Sound & Voice Studio + Center Monitor + Stereo Meters + Right Audio DSP + Bottom Timeline */}
+            {activeWorkspace === 'audio' && (
+              <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+                {/* Left Sound FX & Voice Studio Panel with Tabs */}
+                <div
+                  style={{
+                    width: `${Math.max(380, panelSizes.leftSidebarWidth)}px`,
+                  }}
+                  className="flex flex-col h-full bg-[#141A23] border-r border-[#2A3341] shrink-0 overflow-hidden"
+                >
+                  {/* Top Tab Switcher */}
+                  <div className="h-9 px-3 border-b border-[#2A3341] bg-[#0B0F16] flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-1 bg-[#141A23] border border-[#2A3341] rounded-md p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setAudioSubTab('sfx')}
+                        className={`h-6 px-2.5 rounded text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer ${
+                          audioSubTab === 'sfx'
+                            ? 'bg-[#8B82F6] text-white'
+                            : 'text-[#94A3B8] hover:text-[#E8EDF5]'
+                        }`}
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                        <span>Sound FX</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAudioSubTab('voice')}
+                        className={`h-6 px-2.5 rounded text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer ${
+                          audioSubTab === 'voice'
+                            ? 'bg-[#8B82F6] text-white'
+                            : 'text-[#94A3B8] hover:text-[#E8EDF5]'
+                        }`}
+                      >
+                        <Mic className="w-3.5 h-3.5" />
+                        <span>Voice Studio</span>
+                      </button>
+                    </div>
+                    <span className="text-[10px] font-mono text-[#94A3B8]">
+                      {audioSubTab === 'sfx' ? 'Soundbox AI' : 'Kokoro Neural TTS'}
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-hidden">
+                    {audioSubTab === 'sfx' ? (
+                      <SoundFxStudioPanel />
+                    ) : (
+                      <VoiceStudioPanel />
+                    )}
+                  </div>
+                </div>
+
+                <SplitResizer
+                  direction="horizontal"
+                  onResize={(delta) =>
+                    setPanelSize(
+                      'leftSidebarWidth',
+                      panelSizes.leftSidebarWidth + delta
+                    )
+                  }
+                  onReset={resetPanelSizes}
+                />
+
+                <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                  <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+                    <CenterPreview />
+
+                    {/* Master Stereo Peak & RMS Meter Column */}
+                    <div className="w-44 bg-[#141A23] border-l border-[#2A3341] p-2.5 flex flex-col shrink-0 justify-center overflow-hidden">
+                      <AudioMeters />
+                    </div>
+
+                    <SplitResizer
+                      direction="horizontal"
+                      onResize={(delta) =>
+                        setPanelSize(
+                          'rightInspectorWidth',
+                          panelSizes.rightInspectorWidth - delta
+                        )
+                      }
+                      onReset={resetPanelSizes}
+                    />
+                    <RightInspector />
+                  </div>
+
+                  <SplitResizer
+                    direction="vertical"
+                    onResize={(delta) =>
+                      setPanelSize(
+                        'timelineHeight',
+                        panelSizes.timelineHeight - delta
+                      )
+                    }
+                    onReset={resetPanelSizes}
+                  />
+                  <TimelinePanel />
+                </div>
+              </div>
+            )}
+
+            {/* 5. AI WORKSPACE: Left MCIE Skills + Center AI Copilot + Right Memory Vault */}
+            {activeWorkspace === 'ai' && (
+              <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
+                {/* Left MCIE Skills Library */}
+                <div
+                  style={{
+                    width: `${panelSizes.leftSidebarWidth}px`,
+                  }}
+                  className="h-full bg-[#141A23] border-r border-[#2A3341] flex flex-col shrink-0 overflow-hidden"
+                >
+                  <SkillsLibraryPanel />
+                </div>
+
+                <SplitResizer
+                  direction="horizontal"
+                  onResize={(delta) =>
+                    setPanelSize(
+                      'leftSidebarWidth',
+                      panelSizes.leftSidebarWidth + delta
+                    )
+                  }
+                  onReset={resetPanelSizes}
+                />
+
+                {/* Center AI Copilot */}
+                <div className="flex-1 h-full overflow-hidden bg-[#0B0F16] flex flex-col min-w-0">
+                  <AiMcpPanel />
+                </div>
+
+                <SplitResizer
+                  direction="horizontal"
+                  onResize={(delta) =>
+                    setPanelSize(
+                      'rightInspectorWidth',
+                      panelSizes.rightInspectorWidth - delta
+                    )
+                  }
+                  onReset={resetPanelSizes}
+                />
+
+                {/* Right Obsidian Memory Vault & Graphify */}
+                <div
+                  style={{
+                    width: `${Math.max(380, panelSizes.rightInspectorWidth)}px`,
+                  }}
+                  className="h-full bg-[#141A23] border-l border-[#2A3341] flex flex-col shrink-0 overflow-hidden"
+                >
+                  <MemoryVaultPanel />
+                </div>
+              </div>
+            )}
+
+            {/* Full-Height Right AI & MCP Copilot Drawer (accessible from edit/motion/color/audio) */}
+            {isAiDrawerOpen && activeWorkspace !== 'ai' && (
+              <div className="w-[420px] h-full shrink-0 border-l border-[#2A3341] bg-[#141A23] flex flex-col overflow-hidden z-30 shadow-2xl">
+                <AiMcpPanel />
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* Global Command Palette (Cmd/Ctrl + K) */}
+      <CommandPalette />
 
       {/* Modals */}
       <ProjectModal />

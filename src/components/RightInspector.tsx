@@ -33,8 +33,10 @@ import type {
   TextAnimationPreset,
   TransitionType,
 } from '../types/editor';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 
 export const RightInspector: React.FC = () => {
+  const inspectorWidth = useWorkspaceStore((s) => s.panelSizes.rightInspectorWidth);
   const {
     project,
     selectedClipId,
@@ -61,7 +63,8 @@ export const RightInspector: React.FC = () => {
     return (
       <aside
         data-testid="right-inspector-empty"
-        className="w-[296px] bg-[#0c0c10] border-l border-[#1f1f26] p-3.5 flex flex-col justify-between select-none shrink-0"
+        style={{ width: `${inspectorWidth}px` }}
+        className="bg-[#141A23] border-l border-[#2A3341] p-3.5 flex flex-col justify-between select-none shrink-0 transition-[width] duration-75 text-[#E8EDF5]"
       >
         <div className="space-y-3.5">
           <div className="flex items-center gap-2 border-b border-[#1f1f26] pb-2.5">
@@ -149,7 +152,8 @@ export const RightInspector: React.FC = () => {
   return (
     <aside
       data-testid="right-inspector"
-      className="w-[296px] bg-[#0c0c10] border-l border-[#1f1f26] flex flex-col h-full overflow-hidden select-none shrink-0"
+      style={{ width: `${inspectorWidth}px` }}
+      className="bg-[#141A23] border-l border-[#2A3341] flex flex-col h-full overflow-hidden select-none shrink-0 transition-[width] duration-75 text-[#E8EDF5]"
     >
       {/* Inspector Header */}
       <div className="h-9 px-3.5 bg-[#0e0e13] border-b border-[#1f1f26] flex items-center justify-between shrink-0">

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Scissors,
   Copy,
@@ -19,8 +19,12 @@ import {
   Layers,
   Diamond,
   ArrowRightLeft,
+  Minimize2,
+  Maximize2,
+  Maximize,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import {
   findSnapTarget,
   formatTimecode,
@@ -30,6 +34,9 @@ import {
 import type { TimelineClip, TimelineTrack } from '../types/editor';
 
 export const TimelinePanel: React.FC = () => {
+  const timelineHeight = useWorkspaceStore((s) => s.panelSizes.timelineHeight);
+  const timelineDensity = useWorkspaceStore((s) => s.timelineDensity);
+  const setTimelineDensity = useWorkspaceStore((s) => s.setTimelineDensity);
   const {
     project,
     selectedClipId,
@@ -129,6 +136,33 @@ export const TimelinePanel: React.FC = () => {
     const offsetX = clientX - rect.left + scroller.scrollLeft;
     return Math.max(0, offsetX / timelineZoom);
   };
+
+  const trackHeightPx =
+    timelineDensity === 'compact'
+      ? 28
+      : timelineDensity === 'expanded'
+        ? 64
+        : 40;
+
+  // Alt + Mouse Wheel Zoom on timeline ruler / scroll area
+  useEffect(() => {
+    const scroller = scrollContainerRef.current;
+    if (!scroller) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.altKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 15 : -15;
+        const currentZoom = useEditorStore.getState().timelineZoom;
+        useEditorStore
+          .getState()
+          .setTimelineZoom(Math.max(30, Math.min(260, currentZoom + delta)));
+      }
+    };
+
+    scroller.addEventListener('wheel', handleWheel, { passive: false });
+    return () => scroller.removeEventListener('wheel', handleWheel);
+  }, []);
 
   // Pointer drag handling for Scrubbing, Moving Clips, Trimming Clips, and Moving Keyframes
   useEffect(() => {
@@ -547,51 +581,52 @@ export const TimelinePanel: React.FC = () => {
   return (
     <section
       data-testid="timeline-panel"
-      className="h-76 bg-[#0a0a0d] border-t border-[#1f1f26] flex flex-col select-none shrink-0"
+      style={{ height: `${timelineHeight}px` }}
+      className="bg-[#0B0F16] border-t border-[#2A3341] flex flex-col select-none shrink-0 transition-[height] duration-75"
     >
       {/* Timeline Action Toolbar */}
-      <div className="h-9 bg-[#0d0d12] border-b border-[#1f1f26] px-3.5 flex items-center justify-between gap-2 shrink-0">
+      <div className="h-9 bg-[#141A23] border-b border-[#2A3341] px-3 flex items-center justify-between gap-2 shrink-0">
         {/* Left: Add Track Buttons */}
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             data-testid="add-video-track-btn"
             onClick={() => addTrack('video')}
-            className="h-6 px-2.5 bg-[#14141b] hover:bg-[#1c1c26] border border-[#24242f] rounded-md text-[11px] font-medium text-[#d4d4d8] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
+            className="h-6 px-2 bg-[#1D2531] hover:bg-[#2A3341] border border-[#2A3341] rounded-md text-[11px] font-medium text-[#E8EDF5] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
           >
-            <Plus className="w-3 h-3 text-[#8b93ff]" />
-            <span>Video Track</span>
+            <Plus className="w-3 h-3 text-[#8B82F6]" />
+            <span className="hidden sm:inline">Video Track</span>
           </button>
           <button
             type="button"
             data-testid="add-text-track-btn"
             onClick={() => addTrack('text')}
-            className="h-6 px-2.5 bg-[#14141b] hover:bg-[#1c1c26] border border-[#24242f] rounded-md text-[11px] font-medium text-[#d4d4d8] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
+            className="h-6 px-2 bg-[#1D2531] hover:bg-[#2A3341] border border-[#2A3341] rounded-md text-[11px] font-medium text-[#E8EDF5] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
           >
-            <Plus className="w-3 h-3 text-amber-400" />
-            <span>Text Track</span>
+            <Plus className="w-3 h-3 text-[#E8B45A]" />
+            <span className="hidden sm:inline">Text Track</span>
           </button>
           <button
             type="button"
             data-testid="add-audio-track-btn"
             onClick={() => addTrack('audio')}
-            className="h-6 px-2.5 bg-[#14141b] hover:bg-[#1c1c26] border border-[#24242f] rounded-md text-[11px] font-medium text-[#d4d4d8] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
+            className="h-6 px-2 bg-[#1D2531] hover:bg-[#2A3341] border border-[#2A3341] rounded-md text-[11px] font-medium text-[#E8EDF5] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
           >
-            <Plus className="w-3 h-3 text-emerald-400" />
-            <span>Audio Track</span>
+            <Plus className="w-3 h-3 text-[#36C6A3]" />
+            <span className="hidden sm:inline">Audio Track</span>
           </button>
         </div>
 
-        {/* Center: Clip Editing Tools */}
+        {/* Center: Clip Editing Tools & Density Presets */}
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             data-testid="toolbar-split-btn"
             onClick={() => splitSelectedClipAtPlayhead()}
-            className="h-6 px-2.5 bg-[#14141b] hover:bg-[#1c1c26] border border-[#24242f] rounded-md text-[11px] font-medium text-[#d4d4d8] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
+            className="h-6 px-2 bg-[#1D2531] hover:bg-[#2A3341] border border-[#2A3341] rounded-md text-[11px] font-medium text-[#E8EDF5] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
             title="Split Clip at Playhead (S)"
           >
-            <Scissors className="w-3 h-3 text-[#8b93ff]" />
+            <Scissors className="w-3 h-3 text-[#8B82F6]" />
             <span>Split</span>
           </button>
 
@@ -600,11 +635,11 @@ export const TimelinePanel: React.FC = () => {
             data-testid="toolbar-duplicate-btn"
             disabled={!selectedClipId}
             onClick={() => duplicateClip()}
-            className="h-6 px-2.5 bg-[#14141b] hover:bg-[#1c1c26] disabled:opacity-35 border border-[#24242f] rounded-md text-[11px] font-medium text-[#d4d4d8] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
+            className="h-6 px-2 bg-[#1D2531] hover:bg-[#2A3341] disabled:opacity-35 border border-[#2A3341] rounded-md text-[11px] font-medium text-[#E8EDF5] flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
             title="Duplicate Selected Clip"
           >
             <Copy className="w-3 h-3" />
-            <span>Duplicate</span>
+            <span className="hidden md:inline">Duplicate</span>
           </button>
 
           <button
@@ -612,39 +647,98 @@ export const TimelinePanel: React.FC = () => {
             data-testid="toolbar-delete-btn"
             disabled={!selectedClipId}
             onClick={() => deleteClip()}
-            className="h-6 px-2.5 bg-[#14141b] hover:bg-rose-950/50 disabled:opacity-35 border border-[#24242f] rounded-md text-[11px] font-medium text-rose-300 flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
+            className="h-6 px-2 bg-[#1D2531] hover:bg-rose-950/50 disabled:opacity-35 border border-[#2A3341] rounded-md text-[11px] font-medium text-rose-300 flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors"
             title="Delete Selected Clip (Delete)"
           >
             <Trash2 className="w-3 h-3" />
-            <span>Delete</span>
+            <span className="hidden md:inline">Delete</span>
           </button>
 
-          <div className="h-4 w-px bg-[#1f1f26] mx-1" />
+          <div className="h-4 w-px bg-[#2A3341] mx-0.5" />
 
           <button
             type="button"
             data-testid="toggle-snap-btn"
             onClick={toggleSnap}
-            className={`h-6 px-2.5 rounded-md border text-[11px] font-medium flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+            className={`h-6 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
               snapEnabled
-                ? 'bg-[#5e6ad2]/15 border-[#5e6ad2]/60 text-[#c7ceff]'
-                : 'bg-[#14141b] border-[#24242f] text-[#71717a]'
+                ? 'bg-[#8B82F6]/20 border-[#8B82F6] text-[#E8EDF5]'
+                : 'bg-[#1D2531] border-[#2A3341] text-[#94A3B8]'
             }`}
-            title="Toggle Magnetic Snapping"
+            title="Toggle Magnetic Snapping (N)"
           >
             <Magnet className="w-3 h-3" />
-            <span>Snap</span>
+            <span className="hidden sm:inline">Snap</span>
           </button>
+
+          {/* Track Density Presets */}
+          <div className="hidden lg:flex items-center bg-[#0B0F16] border border-[#2A3341] rounded-md p-0.5 gap-0.5">
+            <button
+              type="button"
+              data-testid="density-compact-btn"
+              onClick={() => setTimelineDensity('compact')}
+              className={`h-5 px-1.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                timelineDensity === 'compact'
+                  ? 'bg-[#8B82F6] text-white'
+                  : 'text-[#94A3B8] hover:text-[#E8EDF5]'
+              }`}
+              title="Compact Track Height (28px)"
+            >
+              Compact
+            </button>
+            <button
+              type="button"
+              data-testid="density-standard-btn"
+              onClick={() => setTimelineDensity('standard')}
+              className={`h-5 px-1.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                timelineDensity === 'standard'
+                  ? 'bg-[#8B82F6] text-white'
+                  : 'text-[#94A3B8] hover:text-[#E8EDF5]'
+              }`}
+              title="Standard Track Height (40px)"
+            >
+              Standard
+            </button>
+            <button
+              type="button"
+              data-testid="density-expanded-btn"
+              onClick={() => setTimelineDensity('expanded')}
+              className={`h-5 px-1.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                timelineDensity === 'expanded'
+                  ? 'bg-[#8B82F6] text-white'
+                  : 'text-[#94A3B8] hover:text-[#E8EDF5]'
+              }`}
+              title="Expanded Track Height (64px)"
+            >
+              Expanded
+            </button>
+          </div>
         </div>
 
-        {/* Right: Timeline Zoom Controls */}
-        <div className="flex items-center gap-2">
+        {/* Right: Timeline Zoom Controls + Fit */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            data-testid="zoom-to-fit-btn"
+            onClick={() => {
+              const scrollerW = scrollContainerRef.current?.clientWidth || 1000;
+              const dur = Math.max(10, totalProjectDuration);
+              const targetZoom = Math.max(30, Math.min(260, (scrollerW - 80) / dur));
+              setTimelineZoom(Math.round(targetZoom));
+            }}
+            className="h-6 px-2 bg-[#1D2531] hover:bg-[#2A3341] border border-[#2A3341] rounded-md text-[11px] font-medium text-[#94A3B8] hover:text-[#E8EDF5] flex items-center gap-1 transition-colors cursor-pointer"
+            title="Zoom to Fit Sequence (Shift+Z)"
+          >
+            <Maximize className="w-3 h-3" />
+            <span className="hidden sm:inline">Fit</span>
+          </button>
+
           <button
             type="button"
             data-testid="timeline-zoom-out-btn"
             onClick={() => setTimelineZoom(timelineZoom - 20)}
-            className="p-1 text-[#71717a] hover:text-[#f4f4f5] cursor-pointer"
-            title="Zoom Out Timeline"
+            className="p-1 text-[#94A3B8] hover:text-[#E8EDF5] cursor-pointer"
+            title="Zoom Out Timeline (Alt+Wheel Down)"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
@@ -655,14 +749,14 @@ export const TimelinePanel: React.FC = () => {
             max={260}
             value={timelineZoom}
             onChange={(e) => setTimelineZoom(Number(e.target.value))}
-            className="w-24"
+            className="w-20 sm:w-24 accent-[#8B82F6]"
           />
           <button
             type="button"
             data-testid="timeline-zoom-in-btn"
             onClick={() => setTimelineZoom(timelineZoom + 20)}
-            className="p-1 text-[#71717a] hover:text-[#f4f4f5] cursor-pointer"
-            title="Zoom In Timeline"
+            className="p-1 text-[#94A3B8] hover:text-[#E8EDF5] cursor-pointer"
+            title="Zoom In Timeline (Alt+Wheel Up)"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
@@ -672,8 +766,8 @@ export const TimelinePanel: React.FC = () => {
       {/* Main Timeline Body: Track Headers (Left) + Scrollable Tracks & Ruler (Right) */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Track Headers Column */}
-        <div className="w-56 bg-[#0c0c10] border-r border-[#1f1f26] flex flex-col shrink-0">
-          <div className="h-7 border-b border-[#1f1f26] px-3 flex items-center justify-between text-[10px] font-mono text-[#63636e]">
+        <div className="w-56 bg-[#0E131B] border-r border-[#2A3341] flex flex-col shrink-0">
+          <div className="h-7 border-b border-[#2A3341] px-3 flex items-center justify-between text-[10px] font-mono text-[#94A3B8]">
             <span>TRACKS ({sortedTracks.length})</span>
             <span>M / V / L</span>
           </div>
@@ -681,17 +775,18 @@ export const TimelinePanel: React.FC = () => {
           <div
             ref={trackHeadersRef}
             onScroll={handleHeadersScroll}
-            className="flex-1 overflow-y-auto divide-y divide-[#191920] scrollbar-none"
+            className="flex-1 overflow-y-auto divide-y divide-[#2A3341]/60 scrollbar-none"
           >
             {sortedTracks.map((track) => (
               <div
                 key={track.id}
                 data-testid={`track-header-${track.id}`}
-                className="h-11 px-3 flex items-center justify-between bg-[#0e0e13] hover:bg-[#13131a] transition-colors"
+                style={{ height: `${trackHeightPx}px` }}
+                className="px-3 flex items-center justify-between bg-[#141A23] hover:bg-[#1D2531] transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   {renderTrackIcon(track.type)}
-                  <span className="text-xs font-medium text-[#d4d4d8] truncate">
+                  <span className="text-xs font-medium text-[#E8EDF5] truncate">
                     {track.name}
                   </span>
                 </div>
@@ -847,8 +942,9 @@ export const TimelinePanel: React.FC = () => {
                         addMediaClipToTimeline(assetId);
                       }
                     }}
-                    className={`h-11 relative transition-colors ${
-                      !track.visible ? 'opacity-45 bg-[#060608]' : 'bg-[#0b0b0f]'
+                    style={{ height: `${trackHeightPx}px` }}
+                    className={`relative transition-colors border-b border-[#2A3341]/40 ${
+                      !track.visible ? 'opacity-40 bg-[#070A0F]' : 'bg-[#0B0F16]'
                     }`}
                   >
                     {trackClips.map((clip) => renderClipCard(clip, track))}

@@ -11,9 +11,55 @@ import {
   Sparkles,
   Cpu,
   Layers,
+  Search,
+  Film,
+  Zap,
+  Palette,
+  Volume2,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
+import { useWorkspaceStore, type WorkspaceId } from '../store/useWorkspaceStore';
 import type { AspectRatio, FrameRate, ResolutionPreset } from '../types/editor';
+
+interface WorkspaceTabDef {
+  id: WorkspaceId;
+  label: string;
+  icon: React.ReactNode;
+  shortcut: string;
+}
+
+const WORKSPACE_TABS: WorkspaceTabDef[] = [
+  {
+    id: 'edit',
+    label: 'EDIT',
+    icon: <Film className="w-3.5 h-3.5" />,
+    shortcut: 'Alt+1',
+  },
+  {
+    id: 'motion',
+    label: 'MOTION',
+    icon: <Zap className="w-3.5 h-3.5" />,
+    shortcut: 'Alt+2',
+  },
+  {
+    id: 'color',
+    label: 'COLOR',
+    icon: <Palette className="w-3.5 h-3.5" />,
+    shortcut: 'Alt+3',
+  },
+  {
+    id: 'audio',
+    label: 'AUDIO',
+    icon: <Volume2 className="w-3.5 h-3.5" />,
+    shortcut: 'Alt+4',
+  },
+  {
+    id: 'ai',
+    label: 'AI',
+    icon: <Sparkles className="w-3.5 h-3.5" />,
+    shortcut: 'Alt+5',
+  },
+];
 
 export const TopBar: React.FC = () => {
   const {
@@ -34,6 +80,10 @@ export const TopBar: React.FC = () => {
     toggleAiDrawer,
   } = useEditorStore();
 
+  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace);
+  const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
+  const toggleCommandPalette = useWorkspaceStore((s) => s.toggleCommandPalette);
+
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(project.name);
 
@@ -47,18 +97,18 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="h-11 bg-[#0b0b0e] border-b border-[#1f1f26] px-3.5 flex items-center justify-between gap-3 select-none shrink-0">
-      {/* Left: Brand + Workspace / Project Switcher */}
+    <header className="h-10 bg-[#0B0F16] border-b border-[#2A3341] px-3 flex items-center justify-between gap-3 select-none shrink-0 z-30">
+      {/* Left: Brand + Project Switcher + Sequence Name + Save Status */}
       <div className="flex items-center gap-2 min-w-0">
-        <div className="flex items-center gap-2 pr-2.5 border-r border-[#1f1f26] shrink-0">
-          <div className="w-6 h-6 bg-[#18181f] border border-[#2c2c38] rounded-md flex items-center justify-center text-[#f4f4f5] shadow-xs">
-            <Layers className="w-3.5 h-3.5 text-[#7c86ff] stroke-[2.2]" />
+        <div className="flex items-center gap-2 pr-2 border-r border-[#2A3341] shrink-0">
+          <div className="w-5.5 h-5.5 bg-[#141A23] border border-[#2A3341] rounded-md flex items-center justify-center text-[#E8EDF5] shadow-xs">
+            <Layers className="w-3.5 h-3.5 text-[#8B82F6] stroke-[2.2]" />
           </div>
-          <span className="font-semibold text-[13px] tracking-[-0.02em] text-[#f4f4f5] whitespace-nowrap">
+          <span className="font-semibold text-[13px] tracking-[-0.02em] text-[#E8EDF5] whitespace-nowrap">
             MotionLab
           </span>
-          <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 bg-[#141419] text-[#71717a] border border-[#23232b] rounded whitespace-nowrap">
-            Studio
+          <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 bg-[#141A23] text-[#94A3B8] border border-[#2A3341] rounded whitespace-nowrap">
+            4.0
           </span>
         </div>
 
@@ -66,11 +116,11 @@ export const TopBar: React.FC = () => {
           type="button"
           data-testid="open-projects-modal-btn"
           onClick={() => setProjectModalOpen(true)}
-          className="h-7 px-2.5 bg-[#141418] hover:bg-[#1c1c22] border border-[#24242c] rounded-md flex items-center gap-1.5 text-[11px] font-medium text-[#d4d4d8] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          className="h-7 px-2 bg-[#141A23] hover:bg-[#1D2531] border border-[#2A3341] rounded-md flex items-center gap-1.5 text-[11px] font-medium text-[#E8EDF5] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           title="Manage Projects (Create, Open, Duplicate, Delete)"
         >
-          <FolderKanban className="w-3.5 h-3.5 text-[#8b93ff]" />
-          <span>Projects</span>
+          <FolderKanban className="w-3.5 h-3.5 text-[#8B82F6]" />
+          <span className="hidden sm:inline">Projects</span>
         </button>
 
         {isEditingName ? (
@@ -88,7 +138,7 @@ export const TopBar: React.FC = () => {
               }
             }}
             autoFocus
-            className="h-7 px-2.5 bg-[#09090b] border border-[#5e6ad2] rounded-md text-xs text-white font-medium focus:outline-none w-48 shrink-0"
+            className="h-7 px-2 bg-[#0B0F16] border border-[#8B82F6] rounded-md text-xs text-white font-medium focus:outline-none w-36 sm:w-44 shrink-0"
           />
         ) : (
           <button
@@ -98,7 +148,7 @@ export const TopBar: React.FC = () => {
               setNameInput(project.name);
               setIsEditingName(true);
             }}
-            className="h-7 px-2.5 hover:bg-[#16161b] border border-transparent hover:border-[#24242c] rounded-md text-xs font-medium text-[#f4f4f5] flex items-center gap-1.5 transition-colors whitespace-nowrap truncate max-w-[200px] cursor-pointer"
+            className="h-7 px-2 hover:bg-[#141A23] border border-transparent hover:border-[#2A3341] rounded-md text-xs font-medium text-[#E8EDF5] flex items-center gap-1.5 transition-colors whitespace-nowrap truncate max-w-[150px] cursor-pointer"
             title="Click to rename sequence"
           >
             <span className="truncate">{project.name}</span>
@@ -108,70 +158,111 @@ export const TopBar: React.FC = () => {
         {/* Save Status Pill */}
         <div
           data-testid="save-status-indicator"
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#121216] border border-[#1f1f26] text-[11px] text-[#8e8e98] whitespace-nowrap shrink-0"
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#141A23] border border-[#2A3341] text-[10px] text-[#94A3B8] whitespace-nowrap shrink-0"
         >
           {saveStatus === 'saved' && (
             <>
-              <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-              <span>Saved</span>
+              <CheckCircle2 className="w-3 h-3 text-[#36C6A3] shrink-0" />
+              <span className="hidden md:inline">Saved</span>
             </>
           )}
           {saveStatus === 'saving' && (
             <>
-              <Loader2 className="w-3 h-3 text-[#7c86ff] animate-spin shrink-0" />
-              <span>Saving</span>
+              <Loader2 className="w-3 h-3 text-[#8B82F6] animate-spin shrink-0" />
+              <span className="hidden md:inline">Saving</span>
             </>
           )}
           {saveStatus === 'unsaved' && (
             <>
-              <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
-              <span>Unsaved</span>
+              <AlertCircle className="w-3 h-3 text-[#E8B45A] shrink-0" />
+              <span className="hidden md:inline">Unsaved</span>
             </>
           )}
         </div>
       </div>
 
-      {/* Center: History & Sequence Format Pill Bar */}
-      <div className="flex items-center gap-2 shrink-0">
-        <div className="flex items-center bg-[#121216] border border-[#22222a] rounded-md p-0.5">
+      {/* Center: 5 Dedicated Workspace Switcher Tabs */}
+      <nav
+        aria-label="Workspaces"
+        className="flex items-center bg-[#141A23] border border-[#2A3341] rounded-lg p-0.5 gap-0.5 shrink-0"
+      >
+        {WORKSPACE_TABS.map((tab) => {
+          const isActive = activeWorkspace === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              data-testid={`workspace-tab-${tab.id}`}
+              onClick={() => setActiveWorkspace(tab.id)}
+              className={`h-7 px-2.5 rounded-md flex items-center gap-1.5 text-[11px] font-semibold tracking-wide transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-[#8B82F6] text-white shadow-xs'
+                  : 'text-[#94A3B8] hover:text-[#E8EDF5] hover:bg-[#1D2531]'
+              }`}
+              title={`Switch to ${tab.label} Workspace (${tab.shortcut})`}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Right Controls: Format Selectors, History, Command Palette, AI & Export */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {/* Quick Command Palette Button */}
+        <button
+          type="button"
+          data-testid="command-palette-btn"
+          onClick={toggleCommandPalette}
+          className="h-7 px-2 bg-[#141A23] hover:bg-[#1D2531] border border-[#2A3341] rounded-md flex items-center gap-1 text-[11px] font-medium text-[#94A3B8] hover:text-[#E8EDF5] transition-colors whitespace-nowrap cursor-pointer"
+          title="Open Command Palette (Ctrl+K or Cmd+K)"
+        >
+          <Search className="w-3.5 h-3.5 text-[#8B82F6]" />
+          <kbd className="hidden lg:inline text-[9px] font-mono px-1 py-0.2 bg-[#0B0F16] border border-[#2A3341] rounded text-[#94A3B8]">
+            ⌘K
+          </kbd>
+        </button>
+
+        {/* History (Undo / Redo) */}
+        <div className="flex items-center bg-[#141A23] border border-[#2A3341] rounded-md p-0.5">
           <button
             type="button"
             data-testid="undo-btn"
             onClick={undo}
             disabled={past.length === 0}
-            className="h-6 w-6 flex items-center justify-center text-[#a1a1aa] hover:text-[#f4f4f5] hover:bg-[#1c1c23] disabled:opacity-30 disabled:pointer-events-none rounded transition-colors cursor-pointer"
+            className="h-6 w-6 flex items-center justify-center text-[#94A3B8] hover:text-[#E8EDF5] hover:bg-[#1D2531] disabled:opacity-30 disabled:pointer-events-none rounded transition-colors cursor-pointer"
             title="Undo (Ctrl+Z)"
           >
             <Undo2 className="w-3.5 h-3.5" />
           </button>
-          <div className="w-px h-3.5 bg-[#22222a]" />
+          <div className="w-px h-3.5 bg-[#2A3341]" />
           <button
             type="button"
             data-testid="redo-btn"
             onClick={redo}
             disabled={future.length === 0}
-            className="h-6 w-6 flex items-center justify-center text-[#a1a1aa] hover:text-[#f4f4f5] hover:bg-[#1c1c23] disabled:opacity-30 disabled:pointer-events-none rounded transition-colors cursor-pointer"
+            className="h-6 w-6 flex items-center justify-center text-[#94A3B8] hover:text-[#E8EDF5] hover:bg-[#1D2531] disabled:opacity-30 disabled:pointer-events-none rounded transition-colors cursor-pointer"
             title="Redo (Ctrl+Shift+Z)"
           >
             <Redo2 className="w-3.5 h-3.5" />
           </button>
         </div>
 
+        {/* Save Button */}
         <button
           type="button"
           data-testid="save-project-btn"
           onClick={() => void saveCurrentProject()}
-          className="h-7 px-2.5 bg-[#121216] hover:bg-[#1a1a21] border border-[#22222a] rounded-md flex items-center gap-1.5 text-[11px] font-medium text-[#d4d4d8] transition-colors whitespace-nowrap cursor-pointer"
+          className="h-7 px-2 bg-[#141A23] hover:bg-[#1D2531] border border-[#2A3341] rounded-md hidden md:flex items-center gap-1 text-[11px] font-medium text-[#E8EDF5] transition-colors whitespace-nowrap cursor-pointer"
           title="Save Project (Ctrl+S)"
         >
-          <Save className="w-3.5 h-3.5 text-[#71717a]" />
+          <Save className="w-3.5 h-3.5 text-[#94A3B8]" />
           <span>Save</span>
         </button>
 
-        <div className="h-4 w-px bg-[#1f1f26] mx-0.5" />
-
-        {/* Unified Format Control Group */}
-        <div className="flex items-center bg-[#121216] border border-[#22222a] rounded-md px-1 py-0.5 gap-1">
+        {/* Sequence Format Group */}
+        <div className="hidden xl:flex items-center bg-[#141A23] border border-[#2A3341] rounded-md px-1 py-0.5 gap-1">
           <select
             aria-label="Aspect Ratio"
             data-testid="aspect-ratio-select"
@@ -179,14 +270,14 @@ export const TopBar: React.FC = () => {
             onChange={(e) =>
               setProjectFormat({ aspectRatio: e.target.value as AspectRatio })
             }
-            className="h-6 pl-2 pr-6 bg-transparent hover:bg-[#1a1a22] rounded text-[11px] font-mono text-[#e4e4e7] focus:outline-none cursor-pointer"
+            className="h-6 pl-1.5 pr-5 bg-transparent hover:bg-[#1D2531] rounded text-[11px] font-mono text-[#E8EDF5] focus:outline-none cursor-pointer"
           >
-            <option value="16:9" className="bg-[#121216]">16:9</option>
-            <option value="9:16" className="bg-[#121216]">9:16</option>
-            <option value="1:1" className="bg-[#121216]">1:1</option>
-            <option value="4:5" className="bg-[#121216]">4:5</option>
+            <option value="16:9" className="bg-[#141A23]">16:9</option>
+            <option value="9:16" className="bg-[#141A23]">9:16</option>
+            <option value="1:1" className="bg-[#141A23]">1:1</option>
+            <option value="4:5" className="bg-[#141A23]">4:5</option>
             {project.aspectRatio === 'custom' && (
-              <option value="custom" className="bg-[#121216]">
+              <option value="custom" className="bg-[#141A23]">
                 {project.customWidth && project.customHeight
                   ? `${project.customWidth}×${project.customHeight}`
                   : 'Custom'}
@@ -194,7 +285,7 @@ export const TopBar: React.FC = () => {
             )}
           </select>
 
-          <div className="w-px h-3.5 bg-[#22222a]" />
+          <div className="w-px h-3.5 bg-[#2A3341]" />
 
           <select
             aria-label="Resolution"
@@ -205,13 +296,13 @@ export const TopBar: React.FC = () => {
                 resolution: e.target.value as ResolutionPreset,
               })
             }
-            className="h-6 pl-2 pr-6 bg-transparent hover:bg-[#1a1a22] rounded text-[11px] font-mono text-[#e4e4e7] focus:outline-none cursor-pointer"
+            className="h-6 pl-1.5 pr-5 bg-transparent hover:bg-[#1D2531] rounded text-[11px] font-mono text-[#E8EDF5] focus:outline-none cursor-pointer"
           >
-            <option value="1080p" className="bg-[#121216]">1080p</option>
-            <option value="720p" className="bg-[#121216]">720p</option>
+            <option value="1080p" className="bg-[#141A23]">1080p</option>
+            <option value="720p" className="bg-[#141A23]">720p</option>
           </select>
 
-          <div className="w-px h-3.5 bg-[#22222a]" />
+          <div className="w-px h-3.5 bg-[#2A3341]" />
 
           <select
             aria-label="Frame Rate"
@@ -220,58 +311,61 @@ export const TopBar: React.FC = () => {
             onChange={(e) =>
               setProjectFormat({ fps: Number(e.target.value) as FrameRate })
             }
-            className="h-6 pl-2 pr-6 bg-transparent hover:bg-[#1a1a22] rounded text-[11px] font-mono text-[#e4e4e7] focus:outline-none cursor-pointer"
+            className="h-6 pl-1.5 pr-5 bg-transparent hover:bg-[#1D2531] rounded text-[11px] font-mono text-[#E8EDF5] focus:outline-none cursor-pointer"
           >
-            <option value={24} className="bg-[#121216]">24 fps</option>
-            <option value={30} className="bg-[#121216]">30 fps</option>
-            <option value={60} className="bg-[#121216]">60 fps</option>
+            <option value={24} className="bg-[#141A23]">24 fps</option>
+            <option value={30} className="bg-[#141A23]">30 fps</option>
+            <option value={60} className="bg-[#141A23]">60 fps</option>
           </select>
         </div>
-      </div>
 
-      {/* Right: AI Copilot Drawer Toggle, MCP Server Config & Export */}
-      <div className="flex items-center gap-2 shrink-0">
+        {/* AI Copilot Drawer Toggle */}
         <button
           type="button"
           data-testid="toggle-ai-drawer-btn"
           onClick={toggleAiDrawer}
-          className={`h-7 px-2.5 rounded-md border text-[11px] font-medium flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+          className={`h-7 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
             isAiDrawerOpen
-              ? 'bg-[#5e6ad2]/15 border-[#5e6ad2]/60 text-[#c7ceff]'
-              : 'bg-[#141418] hover:bg-[#1c1c22] border-[#24242c] text-[#d4d4d8]'
+              ? 'bg-[#8B82F6]/20 border-[#8B82F6] text-white'
+              : 'bg-[#141A23] hover:bg-[#1D2531] border-[#2A3341] text-[#E8EDF5]'
           }`}
-          title="Toggle AI & MCP Copilot Drawer (Antigravity, ChatGPT Codex, Claude)"
+          title="Toggle AI & MCP Copilot Drawer"
         >
-          <Sparkles className="w-3.5 h-3.5 text-[#8b93ff]" />
-          <span>AI Copilot</span>
+          <Sparkles className="w-3.5 h-3.5 text-[#8B82F6]" />
+          <span className="hidden sm:inline">AI Copilot</span>
           <span
             className={`w-1.5 h-1.5 rounded-full ${
-              mcpBridgeConnected ? 'bg-emerald-400' : 'bg-[#7c86ff]'
+              mcpBridgeConnected ? 'bg-[#36C6A3]' : 'bg-[#8B82F6]'
             }`}
           />
         </button>
 
+        {/* MCP Setup */}
         <button
           type="button"
           data-testid="topbar-mcp-btn"
           onClick={() => setMcpModalOpen(true)}
-          className="h-7 px-2.5 bg-[#141418] hover:bg-[#1c1c22] border border-[#24242c] text-[#a1a1aa] hover:text-[#f4f4f5] font-medium text-[11px] rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
-          title="MCP Server Setup & Tool Explorer"
+          className="h-7 px-2 bg-[#141A23] hover:bg-[#1D2531] border border-[#2A3341] text-[#94A3B8] hover:text-[#E8EDF5] font-medium text-[11px] rounded-md hidden lg:flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer"
+          title="MCP Bridge & Server Configuration"
         >
-          <Cpu className="w-3.5 h-3.5 text-[#71717a]" />
-          <span>MCP Bridge</span>
+          <Cpu className="w-3.5 h-3.5 text-[#94A3B8]" />
+          <span>MCP</span>
         </button>
 
+        {/* Export MP4 Master */}
         <button
           type="button"
           data-testid="open-export-btn"
           onClick={() => setExportModalOpen(true)}
-          className="h-7 px-3 bg-[#5e6ad2] hover:bg-[#6e79de] text-white font-medium text-[11px] rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap shadow-xs cursor-pointer"
+          className="h-7 px-2.5 bg-[#8B82F6] hover:bg-[#7a71f0] text-white font-medium text-[11px] rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap shadow-xs cursor-pointer"
+          title="Export Sequence to MP4"
         >
           <Download className="w-3.5 h-3.5" />
-          <span>Export MP4</span>
+          <span>Export</span>
         </button>
       </div>
     </header>
   );
 };
+
+export default TopBar;

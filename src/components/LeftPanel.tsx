@@ -30,6 +30,8 @@ import { createDefaultColorEffects } from '../engine/projectFactory';
 import { VoiceStudioPanel } from '../voicebox/VoiceStudioPanel';
 import { SoundFxStudioPanel } from '../sfx/SoundFxStudioPanel';
 import { VideoFxStudioPanel } from './VideoFxStudioPanel';
+import { EffectsBrowser } from './workspace/EffectsBrowser';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 
 const NAV_ITEMS: {
   id: LeftSidebarTab;
@@ -180,6 +182,8 @@ export const LeftPanel: React.FC = () => {
     setProjectModalOpen,
   } = useEditorStore();
 
+  const leftSidebarWidth = useWorkspaceStore((s) => s.panelSizes.leftSidebarWidth);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [mediaFilter, setMediaFilter] = useState<'all' | 'video' | 'audio' | 'image'>('all');
   const [mediaSearchQuery, setMediaSearchQuery] = useState('');
@@ -316,8 +320,16 @@ export const LeftPanel: React.FC = () => {
     return true;
   });
 
+  const effectiveSidebarWidth =
+    activeLeftTab === 'voice' || activeLeftTab === 'sfx' || activeLeftTab === 'filters'
+      ? Math.max(420, leftSidebarWidth)
+      : leftSidebarWidth;
+
   return (
-    <aside className={`${activeLeftTab === 'voice' || activeLeftTab === 'sfx' || activeLeftTab === 'filters' ? 'w-[420px]' : 'w-[336px]'} bg-[#0c0c10] border-r border-[#1f1f26] flex shrink-0 select-none h-full overflow-hidden transition-all duration-150`}>
+    <aside
+      style={{ width: `${effectiveSidebarWidth}px` }}
+      className="bg-[#0B0F16] border-r border-[#2A3341] flex shrink-0 select-none h-full overflow-hidden transition-[width] duration-75"
+    >
       {/* Minimalist Linear Vertical Icon Dock */}
       <nav className="w-13 bg-[#09090c] border-r border-[#1f1f26] flex flex-col items-center py-2.5 gap-1 shrink-0">
         {NAV_ITEMS.map((item) => {
@@ -902,70 +914,10 @@ export const LeftPanel: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 5: EFFECTS */}
+        {/* TAB 5: EFFECTS BROWSER */}
         {activeLeftTab === 'effects' && (
-          <div className="flex-1 flex flex-col h-full overflow-y-auto p-3 space-y-3">
-            <div className="text-xs font-semibold tracking-tight text-[#f4f4f5]">
-              Optical & Motion Effects
-            </div>
-            {!selectedClipId && (
-              <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-700/40 p-2.5 rounded-lg">
-                Select a video, image, or text clip on the timeline to apply optical effects.
-              </div>
-            )}
-            {[
-              {
-                id: 'exposure-boost',
-                name: 'Studio Exposure Boost',
-                desc: '+28 Exposure • +12 Contrast',
-                fx: { exposure: 28, contrast: 12 },
-              },
-              {
-                id: 'gaussian-soft',
-                name: 'Dreamy Gaussian Blur',
-                desc: '8px Optical Blur • +15 Brightness',
-                fx: { blur: 8, brightness: 15 },
-              },
-              {
-                id: 'mirror-flip-h',
-                name: 'Horizontal Mirror Flip',
-                desc: 'Invert horizontal axis',
-                fx: { flipH: true },
-              },
-              {
-                id: 'reset-effects',
-                name: 'Reset All Optical Effects',
-                desc: 'Restore neutral optical state',
-                fx: createDefaultColorEffects(),
-              },
-            ].map((preset) => (
-              <div
-                key={preset.id}
-                className="bg-[#121217] border border-[#22222c] p-2.5 rounded-lg flex items-center justify-between gap-2"
-              >
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-[#f4f4f5] truncate">
-                    {preset.name}
-                  </div>
-                  <div className="text-[10px] font-mono text-[#71717a] truncate">
-                    {preset.desc}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  data-testid={`apply-effect-${preset.id}`}
-                  disabled={!selectedClipId}
-                  onClick={() => {
-                    if (selectedClipId) {
-                      updateClipColorEffects(selectedClipId, preset.fx);
-                    }
-                  }}
-                  className="h-7 px-2.5 bg-[#191922] hover:bg-[#5e6ad2] border border-[#282836] disabled:opacity-35 text-xs text-white rounded-md shrink-0 whitespace-nowrap cursor-pointer"
-                >
-                  Apply
-                </button>
-              </div>
-            ))}
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <EffectsBrowser />
           </div>
         )}
 
