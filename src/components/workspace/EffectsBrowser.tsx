@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../../store/useEditorSelection';
 import React, { useState, useMemo } from 'react';
 import {
   Search,
@@ -76,7 +77,7 @@ export const EffectsBrowser: React.FC = () => {
     addTextClipToTimeline,
     addMediaClipToTimeline,
     project,
-  } = useEditorStore();
+  } = useEditorSelection(['selectedClipId', 'setClipTransition', 'addTextClipToTimeline', 'addMediaClipToTimeline', 'project']);
 
   const effectsFilterCategory = useWorkspaceStore(
     (s) => s.effectsFilterCategory

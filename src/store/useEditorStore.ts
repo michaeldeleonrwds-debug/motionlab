@@ -51,6 +51,7 @@ import {
   saveProjectToDB,
   type ProjectSummary,
 } from '../storage/projectStorage';
+import { memoryManager, DEFAULT_MEMORY_BUDGET } from '../engine/memoryManager';
 
 export type LeftSidebarTab =
   | 'media'
@@ -299,7 +300,7 @@ function scheduleAutosave(get: () => EditorState, set: (partial: Partial<EditorS
   if (autosaveTimer) clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
     void get().saveCurrentProject();
-  }, 450);
+  }, 1000);
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -604,7 +605,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     customWidth,
     customHeight,
   }) => {
-    // Cleanup previous object URLs
+    // Cleanup previous object URLs via memoryManager
+    memoryManager.revokeUrlsByOwner(get().project.id);
     for (const asset of get().project.mediaAssets) {
       if (asset.objectUrl) URL.revokeObjectURL(asset.objectUrl);
     }
@@ -671,6 +673,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   openExistingProject: async (projectId: string) => {
     const loaded = await loadProjectFromDB(projectId);
     if (!loaded) return;
+    memoryManager.revokeUrlsByOwner(get().project.id);
     for (const asset of get().project.mediaAssets) {
       if (asset.objectUrl) URL.revokeObjectURL(asset.objectUrl);
     }
@@ -758,10 +761,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   pushHistory: () => {
     const currentSnap = cloneSnapshot(get().project);
-    set((state) => ({
-      past: [...state.past.slice(-39), currentSnap],
-      future: [],
-    }));
+    const maxDepth = DEFAULT_MEMORY_BUDGET.maxHistoryDepth;
+    set((state) => {
+      const nextPast = [...state.past.slice(-(maxDepth - 1)), currentSnap];
+      memoryManager.setHistoryDepth(nextPast.length);
+      return {
+        past: nextPast,
+        future: [],
+      };
+    });
   },
 
   undo: () => {
@@ -769,10 +777,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (past.length === 0) return;
     const previous = past[past.length - 1];
     const currentSnap = cloneSnapshot(project);
+    const maxDepth = DEFAULT_MEMORY_BUDGET.maxHistoryDepth;
+
+    const nextPast = past.slice(0, -1);
+    const nextFuture = [currentSnap, ...future.slice(0, maxDepth - 1)];
+    memoryManager.setHistoryDepth(nextPast.length + nextFuture.length);
 
     set({
-      past: past.slice(0, -1),
-      future: [currentSnap, ...future.slice(0, 39)],
+      past: nextPast,
+      future: nextFuture,
       project: {
         ...project,
         tracks: previous.tracks,
@@ -792,10 +805,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (future.length === 0) return;
     const next = future[0];
     const currentSnap = cloneSnapshot(project);
+    const maxDepth = DEFAULT_MEMORY_BUDGET.maxHistoryDepth;
+
+    const nextPast = [...past.slice(-(maxDepth - 1)), currentSnap];
+    const nextFuture = future.slice(1);
+    memoryManager.setHistoryDepth(nextPast.length + nextFuture.length);
 
     set({
-      past: [...past, currentSnap],
-      future: future.slice(1),
+      past: nextPast,
+      future: nextFuture,
       project: {
         ...project,
         tracks: next.tracks,

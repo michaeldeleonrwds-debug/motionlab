@@ -30,6 +30,7 @@ import {
   renderCompositionAtTime,
   type MediaElementSource,
 } from '../engine/compositionRenderer';
+import { memoryManager, DEFAULT_MEMORY_BUDGET } from '../engine/memoryManager';
 
 export const CenterPreview: React.FC = () => {
   const {
@@ -110,89 +111,112 @@ export const CenterPreview: React.FC = () => {
     }
   >(null);
 
-  // Sync persistent HTMLVideoElement / HTMLImageElement / HTMLAudioElement pool without recreating per frame
+  // Ref to throttle rapid scrubbing seeks per element
+  const lastSeekTimesRef = useRef<Map<string, number>>(new Map());
+
+  // Sync bounded HTMLVideoElement / HTMLImageElement / HTMLAudioElement pool without recreating per frame
   useEffect(() => {
     const assetMap = new Map(project.mediaAssets.map((a) => [a.id, a]));
     const currentVideoIds = new Set<string>();
     const currentAudioIds = new Set<string>();
     const currentImageIds = new Set<string>();
 
-    for (const clip of project.clips) {
-      if (!clip.mediaId) continue;
-      const asset = assetMap.get(clip.mediaId);
+    // 1. BOUNDED VIDEO POOL: Only allocate decoders for video clips within the proximity window [-4s, +5s]
+    const PROXIMITY_BEFORE = 4.0;
+    const PROXIMITY_AFTER = 5.0;
+
+    const candidateVideoClips = project.clips
+      .filter((clip) => {
+        if (clip.type !== 'video' || !clip.mediaId) return false;
+        const clipEnd = clip.startTime + clip.duration;
+        return clipEnd >= currentTime - PROXIMITY_BEFORE && clip.startTime <= currentTime + PROXIMITY_AFTER;
+      })
+      .sort((a, b) => {
+        const distA = Math.abs(currentTime - (a.startTime + a.duration / 2));
+        const distB = Math.abs(currentTime - (b.startTime + b.duration / 2));
+        return distA - distB;
+      })
+      .slice(0, DEFAULT_MEMORY_BUDGET.maxActiveVideoElements);
+
+    for (const clip of candidateVideoClips) {
+      const asset = assetMap.get(clip.mediaId!);
       if (!asset || !asset.objectUrl) continue;
 
-      if (clip.type === 'video') {
-        currentVideoIds.add(clip.id);
-        const existing = videoElementsRef.current.get(clip.id);
-        if (!existing || existing.dataset.srcUrl !== asset.objectUrl) {
-          if (existing) {
-            existing.onloadeddata = null;
-            existing.onseeked = null;
-            existing.pause();
-            existing.removeAttribute('src');
-            existing.load();
-          }
-          const v = document.createElement('video');
-          v.crossOrigin = 'anonymous';
-          v.playsInline = true;
-          v.preload = 'metadata';
-          v.dataset.srcUrl = asset.objectUrl;
-          v.src = asset.objectUrl;
-          v.onloadeddata = () => setMediaVersion((n) => n + 1);
-          v.onseeked = () => setMediaVersion((n) => n + 1);
-          videoElementsRef.current.set(clip.id, v);
+      currentVideoIds.add(clip.id);
+      const existing = videoElementsRef.current.get(clip.id);
+      if (!existing || existing.dataset.srcUrl !== asset.objectUrl) {
+        if (existing) {
+          memoryManager.unregisterVideoElement(existing);
         }
-      } else if (clip.type === 'audio') {
-        currentAudioIds.add(clip.id);
-        const existing = audioElementsRef.current.get(clip.id);
-        if (!existing || existing.dataset.srcUrl !== asset.objectUrl) {
-          if (existing) {
-            existing.pause();
-            existing.removeAttribute('src');
-            existing.load();
-          }
-          const a = document.createElement('audio');
-          a.crossOrigin = 'anonymous';
-          a.preload = 'metadata';
-          a.dataset.srcUrl = asset.objectUrl;
-          a.src = asset.objectUrl;
-          audioElementsRef.current.set(clip.id, a);
-        }
-      } else if (clip.type === 'image') {
-        currentImageIds.add(asset.id);
-        const existing = imageElementsRef.current.get(asset.id);
-        if (!existing || existing.dataset.srcUrl !== asset.objectUrl) {
-          if (existing) {
-            existing.onload = null;
-            existing.removeAttribute('src');
-          }
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.dataset.srcUrl = asset.objectUrl;
-          img.onload = () => setMediaVersion((n) => n + 1);
-          img.src = asset.objectUrl;
-          imageElementsRef.current.set(asset.id, img);
-        }
+        const v = document.createElement('video');
+        v.crossOrigin = 'anonymous';
+        v.playsInline = true;
+        v.preload = 'metadata';
+        v.dataset.srcUrl = asset.objectUrl;
+        v.src = asset.objectUrl;
+        v.onloadeddata = () => setMediaVersion((n) => n + 1);
+        v.onseeked = () => setMediaVersion((n) => n + 1);
+        memoryManager.registerVideoElement(v);
+        videoElementsRef.current.set(clip.id, v);
       }
     }
 
-    // Cleanup removed clip elements
+    // 2. BOUNDED AUDIO POOL
+    const candidateAudioClips = project.clips
+      .filter((clip) => {
+        if (clip.type !== 'audio' || !clip.mediaId) return false;
+        const clipEnd = clip.startTime + clip.duration;
+        return clipEnd >= currentTime - PROXIMITY_BEFORE && clip.startTime <= currentTime + PROXIMITY_AFTER;
+      })
+      .slice(0, DEFAULT_MEMORY_BUDGET.maxActiveAudioElements);
+
+    for (const clip of candidateAudioClips) {
+      const asset = assetMap.get(clip.mediaId!);
+      if (!asset || !asset.objectUrl) continue;
+
+      currentAudioIds.add(clip.id);
+      const existing = audioElementsRef.current.get(clip.id);
+      if (!existing || existing.dataset.srcUrl !== asset.objectUrl) {
+        if (existing) {
+          memoryManager.unregisterAudioElement(existing);
+        }
+        const a = document.createElement('audio');
+        a.crossOrigin = 'anonymous';
+        a.preload = 'metadata';
+        a.dataset.srcUrl = asset.objectUrl;
+        a.src = asset.objectUrl;
+        memoryManager.registerAudioElement(a);
+        audioElementsRef.current.set(clip.id, a);
+      }
+    }
+
+    // 3. IMAGE ELEMENTS: Load via memoryManager with LRU caching
+    for (const clip of project.clips) {
+      if (clip.type !== 'image' || !clip.mediaId) continue;
+      const asset = assetMap.get(clip.mediaId);
+      if (!asset || !asset.objectUrl) continue;
+
+      currentImageIds.add(asset.id);
+      const existing = imageElementsRef.current.get(asset.id);
+      if (!existing || existing.dataset.srcUrl !== asset.objectUrl) {
+        const img = memoryManager.getOrLoadImage(asset.id, asset.objectUrl, () => {
+          setMediaVersion((n) => n + 1);
+        });
+        imageElementsRef.current.set(asset.id, img);
+      }
+    }
+
+    // 4. EVICT UNUSED DECODERS IMMEDIATELY
     for (const [id, v] of videoElementsRef.current.entries()) {
       if (!currentVideoIds.has(id)) {
-        v.onloadeddata = null;
-        v.onseeked = null;
-        v.pause();
-        v.removeAttribute('src');
-        v.load();
+        memoryManager.unregisterVideoElement(v);
         videoElementsRef.current.delete(id);
+        lastSeekTimesRef.current.delete(id);
       }
     }
     for (const [id, a] of audioElementsRef.current.entries()) {
       if (!currentAudioIds.has(id)) {
-        a.pause();
-        a.removeAttribute('src');
-        a.load();
+        memoryManager.unregisterAudioElement(a);
         audioElementsRef.current.delete(id);
       }
     }
@@ -203,11 +227,12 @@ export const CenterPreview: React.FC = () => {
         imageElementsRef.current.delete(id);
       }
     }
-  }, [project.clips, project.mediaAssets]);
+  }, [project.clips, project.mediaAssets, currentTime]);
 
   // Synchronize playback state across HTMLMediaElements during playhead scrub and transport play
   useEffect(() => {
     const trackMap = new Map(project.tracks.map((t) => [t.id, t]));
+    const now = performance.now();
 
     for (const clip of project.clips) {
       if (clip.type === 'video') {
@@ -226,7 +251,11 @@ export const CenterPreview: React.FC = () => {
         v.playbackRate = clip.playbackSpeed || 1;
 
         if (isClipActive) {
-          if (!v.seeking && Math.abs(v.currentTime - targetSrcTime) > 0.05) {
+          const lastSeek = lastSeekTimesRef.current.get(clip.id) || 0;
+          const timeDiff = Math.abs(v.currentTime - targetSrcTime);
+          // Throttle rapid scrubbing seeks to max 30 seeks/sec to avoid decoder starvation
+          if (!v.seeking && timeDiff > 0.04 && (now - lastSeek > 32 || isPlaying)) {
+            lastSeekTimesRef.current.set(clip.id, now);
             v.currentTime = targetSrcTime;
           }
           if (isPlaying && v.paused) {

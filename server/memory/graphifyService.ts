@@ -42,10 +42,10 @@ export class GraphifyService {
         }
       }
 
-      // Check CLI version
+      // Check CLI version with fast 500ms timeout
       let version: string | undefined;
       try {
-        const { stdout } = await execFileAsync('graphify', ['--version']);
+        const { stdout } = await execFileAsync('graphify', ['--version'], { timeout: 500 });
         version = stdout.trim();
       } catch {
         version = 'graphify-local';
@@ -57,6 +57,7 @@ export class GraphifyService {
         try {
           const { stdout } = await execFileAsync('git', ['status', '--porcelain', 'src/'], {
             cwd: this.repoRoot,
+            timeout: 500,
           });
           if (stdout.trim().length > 0) {
             isStale = true;

@@ -25,9 +25,20 @@ export const ScopesPanel: React.FC<ScopesPanelProps> = ({ getCanvasElement, clas
 
   useEffect(() => {
     let isRunning = true;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = 320;
+    offscreen.height = 180;
+    const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
+    let lastSample = -Infinity;
 
-    const renderScope = () => {
+    const renderScope = (timestamp: number) => {
       if (!isRunning) return;
+      // Scopes telemetry sampled at ~6-7 fps (150ms) to preserve CPU and eliminate frame readback thrashing
+      if (timestamp - lastSample < 150) {
+        animFrameRef.current = requestAnimationFrame(renderScope);
+        return;
+      }
+      lastSample = timestamp;
 
       const sourceCanvas = getCanvasElement
         ? getCanvasElement()
@@ -46,10 +57,6 @@ export const ScopesPanel: React.FC<ScopesPanelProps> = ({ getCanvasElement, clas
 
           try {
             // Get pixel data from source (downsampled to 320x180 for 60fps performance)
-            const offscreen = document.createElement('canvas');
-            offscreen.width = 320;
-            offscreen.height = 180;
-            const offCtx = offscreen.getContext('2d');
             if (offCtx) {
               offCtx.drawImage(sourceCanvas, 0, 0, 320, 180);
               const imgData = offCtx.getImageData(0, 0, 320, 180);
@@ -157,6 +164,8 @@ export const ScopesPanel: React.FC<ScopesPanelProps> = ({ getCanvasElement, clas
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
       }
+      offscreen.width = 0;
+      offscreen.height = 0;
     };
   }, [activeScope, getCanvasElement]);
 

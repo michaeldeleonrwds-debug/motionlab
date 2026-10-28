@@ -1,5 +1,6 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { MediaAsset, ProjectData } from '../types/editor';
+import { memoryManager } from '../engine/memoryManager';
 
 const DB_NAME = 'motionlab-nle-db';
 const DB_VERSION = 1;
@@ -76,8 +77,9 @@ export async function saveProjectToDB(project: ProjectData): Promise<void> {
 function hydrateStoredProject(stored: ProjectData): ProjectData {
   const hydratedAssets: MediaAsset[] = (stored.mediaAssets || []).map((asset) => {
     let objectUrl = asset.objectUrl;
-    if (asset.blob && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-      objectUrl = URL.createObjectURL(asset.blob);
+    if (asset.blob) {
+      // Free any stale previous URL if needed, then create tracked URL with project owner
+      objectUrl = memoryManager.createTrackedUrl(asset.blob, stored.id);
     }
 
     // Filter out any stale revoked blob: URLs from previous sessions

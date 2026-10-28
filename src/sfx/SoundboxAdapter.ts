@@ -306,23 +306,25 @@ export class SoundboxAdapter {
     return peaks;
   }
 
+  private currentAuditionUrl: string | null = null;
+  private currentAuditionIsBlobUrl: boolean = false;
+
   /**
    * Audition / Preview playback in browser
    */
   public auditionSound(blobOrUrl: Blob | string, onEnded?: () => void): HTMLAudioElement {
     this.stopAudition();
 
-    const url = typeof blobOrUrl === 'string' ? blobOrUrl : URL.createObjectURL(blobOrUrl);
+    const isBlob = typeof blobOrUrl !== 'string';
+    const url = isBlob ? URL.createObjectURL(blobOrUrl) : blobOrUrl;
+    this.currentAuditionUrl = url;
+    this.currentAuditionIsBlobUrl = isBlob;
+
     const audio = new Audio(url);
     this.currentAuditionAudio = audio;
 
     audio.onended = () => {
-      if (typeof blobOrUrl !== 'string') {
-        URL.revokeObjectURL(url);
-      }
-      if (this.currentAuditionAudio === audio) {
-        this.currentAuditionAudio = null;
-      }
+      this.stopAudition();
       onEnded?.();
     };
 
@@ -339,8 +341,18 @@ export class SoundboxAdapter {
   public stopAudition(): void {
     if (this.currentAuditionAudio) {
       this.currentAuditionAudio.pause();
-      this.currentAuditionAudio.currentTime = 0;
+      this.currentAuditionAudio.removeAttribute('src');
+      this.currentAuditionAudio.load();
       this.currentAuditionAudio = null;
+    }
+    if (this.currentAuditionUrl && this.currentAuditionIsBlobUrl) {
+      try {
+        URL.revokeObjectURL(this.currentAuditionUrl);
+      } catch {
+        // ignore
+      }
+      this.currentAuditionUrl = null;
+      this.currentAuditionIsBlobUrl = false;
     }
   }
 

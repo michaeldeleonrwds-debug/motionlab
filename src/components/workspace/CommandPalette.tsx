@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../../store/useEditorSelection';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search,
@@ -14,9 +15,12 @@ import {
   Plus,
   Tv,
   Zap,
+  Activity,
+  Trash2,
 } from 'lucide-react';
 import { useWorkspaceStore, type WorkspaceId } from '../../store/useWorkspaceStore';
 import { useEditorStore } from '../../store/useEditorStore';
+import { memoryManager } from '../../engine/memoryManager';
 
 interface CommandItem {
   id: string;
@@ -78,7 +82,7 @@ export const CommandPalette: React.FC = () => {
     addTextClipToTimeline,
     selectedClipId,
     project,
-  } = useEditorStore();
+  } = useEditorSelection(['saveCurrentProject', 'setExportModalOpen', 'setProjectModalOpen', 'togglePlayPause', 'undo', 'redo', 'splitSelectedClipAtPlayhead', 'deleteClip', 'setProjectFormat', 'addTextClipToTimeline', 'selectedClipId', 'project']);
 
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -159,6 +163,30 @@ export const CommandPalette: React.FC = () => {
         shortcut: 'Ctrl+E',
         icon: <Download className="w-4 h-4 text-[#8B82F6]" />,
         action: () => setExportModalOpen(true),
+      },
+      {
+        id: 'act-memory-profiler',
+        title: 'Memory Diagnostics & Profiler',
+        subtitle: 'Inspect live JS heap, video decoder pool, and memory budgets',
+        category: 'Action',
+        shortcut: 'Ctrl+Shift+M',
+        icon: <Activity className="w-4 h-4 text-emerald-400" />,
+        action: () => {
+          // Trigger the Ctrl+Shift+M key event to open modal
+          window.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'm', ctrlKey: true, shiftKey: true, bubbles: true })
+          );
+        },
+      },
+      {
+        id: 'act-purge-caches',
+        title: 'Purge Memory Caches & GC',
+        subtitle: 'Evict inactive decoders, revoke orphaned blobs, and free RAM',
+        category: 'Action',
+        icon: <Trash2 className="w-4 h-4 text-rose-400" />,
+        action: () => {
+          memoryManager.purgeAllCaches();
+        },
       },
       {
         id: 'act-play',

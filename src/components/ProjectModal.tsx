@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../store/useEditorSelection';
 import React, { useEffect, useState } from 'react';
 import {
   X,
@@ -40,7 +41,7 @@ export const ProjectModal: React.FC = () => {
     duplicateProjectAction,
     deleteProjectAction,
     refreshProjectList,
-  } = useEditorStore();
+  } = useEditorSelection(['project', 'projectList', 'isProjectModalOpen', 'setProjectModalOpen', 'createNewProjectAction', 'openExistingProject', 'duplicateProjectAction', 'deleteProjectAction', 'refreshProjectList']);
 
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [selectedTemplateId, setSelectedTemplateId] =

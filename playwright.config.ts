@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: 'list',
   timeout: 90000,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: process.env.TEST_URL || 'http://localhost:5170',
     trace: 'on-first-retry',
     viewport: { width: 1520, height: 920 },
   },
@@ -21,8 +21,8 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    url: 'http://localhost:5170',
+    reuseExistingServer: true,
     timeout: 30000,
   },
 });

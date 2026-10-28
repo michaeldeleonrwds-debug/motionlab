@@ -19,10 +19,12 @@ import {
   Volume2,
   PanelLeft,
   PanelRight,
+  Activity,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { useWorkspaceStore, type WorkspaceId } from '../store/useWorkspaceStore';
 import type { AspectRatio, FrameRate, ResolutionPreset } from '../types/editor';
+import { MemoryDiagnosticsModal } from './MemoryDiagnosticsModal';
 
 interface WorkspaceTabDef {
   id: WorkspaceId;
@@ -91,6 +93,19 @@ export const TopBar: React.FC = () => {
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(project.name);
+  const [isMemoryModalOpen, setIsMemoryModalOpen] = useState(false);
+
+  // Global shortcut for Memory Diagnostics (Ctrl+Shift+M)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        setIsMemoryModalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleNameSubmit = () => {
     setIsEditingName(false);
@@ -376,6 +391,18 @@ export const TopBar: React.FC = () => {
           />
         </button>
 
+        {/* Memory Diagnostics Profiler */}
+        <button
+          type="button"
+          data-testid="topbar-memory-btn"
+          onClick={() => setIsMemoryModalOpen(true)}
+          className="h-7 px-2 bg-[#141A23] hover:bg-[#1D2531] border border-[#2A3341] text-[#94A3B8] hover:text-[#E8EDF5] font-medium text-[11px] rounded-md hidden lg:flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
+          title="Memory Diagnostics & Resource Profiler (Ctrl+Shift+M)"
+        >
+          <Activity className="w-3.5 h-3.5 text-emerald-400" />
+          <span>RAM</span>
+        </button>
+
         {/* MCP Setup */}
         <button
           type="button"
@@ -400,6 +427,11 @@ export const TopBar: React.FC = () => {
           <span>Export</span>
         </button>
       </div>
+
+      <MemoryDiagnosticsModal
+        isOpen={isMemoryModalOpen}
+        onClose={() => setIsMemoryModalOpen(false)}
+      />
     </header>
   );
 };

@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { openBridgeStream } from './bridgeStream';
 import { ObsidianVaultManager } from './memory/obsidianVault';
 import { GraphifyService } from './memory/graphifyService';
 import { MemoryConsolidator } from '../src/memory/MemoryConsolidator';
@@ -1475,22 +1476,7 @@ export function mcpBridgePlugin(): Plugin {
       }
       // 1. Browser SSE Bridge Connection
       if (url.startsWith('/api/mcp/bridge-stream') && req.method === 'GET') {
-        res.writeHead(200, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
-        });
-        res.write(
-          `data: ${JSON.stringify({
-            type: 'bridge_connected',
-            connectedClients: sseClients.size + 1,
-          })}\n\n`
-        );
-        sseClients.add(res);
-        req.on('close', () => {
-          sseClients.delete(res);
-        });
+        openBridgeStream(req, res, sseClients);
         return;
       }
 

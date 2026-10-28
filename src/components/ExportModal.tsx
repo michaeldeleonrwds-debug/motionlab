@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../store/useEditorSelection';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X,
@@ -20,7 +21,7 @@ import {
 import type { ExportSettings, FrameRate, ResolutionPreset } from '../types/editor';
 
 export const ExportModal: React.FC = () => {
-  const { project, isExportModalOpen, setExportModalOpen } = useEditorStore();
+  const { project, isExportModalOpen, setExportModalOpen } = useEditorSelection(['project', 'isExportModalOpen', 'setExportModalOpen']);
 
   const [resolution, setResolution] = useState<ResolutionPreset>(
     project.resolution

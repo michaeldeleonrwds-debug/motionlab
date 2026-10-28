@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../store/useEditorSelection';
 import React, { useState } from 'react';
 import {
   X,
@@ -121,7 +122,7 @@ export const McpConfigModal: React.FC = () => {
     mcpBridgeConnected,
     mcpLogs,
     addMcpLog,
-  } = useEditorStore();
+  } = useEditorSelection(['isMcpModalOpen', 'setMcpModalOpen', 'mcpBridgeConnected', 'mcpLogs', 'addMcpLog']);
 
   const [activeTab, setActiveTab] = useState<ModalTab>('clients');
   const [selectedClient, setSelectedClient] =

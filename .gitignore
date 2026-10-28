@@ -32,3 +32,9 @@ server/tts/models/
 *.safetensors
 *.pt
 *.pth
+
+# Python & Temporary Generated SFX Audio
+__pycache__/
+*.pyc
+server/sfx/generated/
+public/sfx/sfx-*.wav

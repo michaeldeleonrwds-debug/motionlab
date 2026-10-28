@@ -280,6 +280,18 @@ export function ffmpegExportPlugin(): Plugin {
         const stat = fs.statSync(job.outputPath);
         const probe = await probeMediaFile(job.outputPath);
 
+        // Schedule temp directory cleanup after 15 minutes to prevent disk bloat
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(job.workDir)) {
+              fs.rmSync(job.workDir, { recursive: true, force: true });
+            }
+            jobs.delete(jobId);
+          } catch {
+            // ignore
+          }
+        }, 15 * 60 * 1000);
+
         sendJson(res, 200, {
           ok: true,
           jobId,

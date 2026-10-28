@@ -1504,6 +1504,8 @@ function renderSingleClipLayer(
 }
 
 export interface RenderCompositionOptions {
+  /** Interactive preview only. Exports default to the sequence's full resolution. */
+  renderScale?: number;
   showSafeGuides?: boolean;
   selectedClipId?: string | null;
 }
@@ -1519,12 +1521,16 @@ export function renderCompositionAtTime(
   mediaSources: MediaElementSource,
   options: RenderCompositionOptions = {}
 ): void {
-  const { width: canvasWidth, height: canvasHeight } = getResolutionDimensions(
+  const dimensions = getResolutionDimensions(
     project.aspectRatio,
     project.resolution,
     project.customWidth,
     project.customHeight
   );
+
+  const renderScale = Math.max(0.1, Math.min(1, options.renderScale ?? 1));
+  const canvasWidth = Math.max(1, Math.round(dimensions.width * renderScale));
+  const canvasHeight = Math.max(1, Math.round(dimensions.height * renderScale));
 
   if (ctx.canvas.width !== canvasWidth || ctx.canvas.height !== canvasHeight) {
     ctx.canvas.width = canvasWidth;

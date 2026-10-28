@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../store/useEditorSelection';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Send,
@@ -111,7 +112,7 @@ export const AiMcpPanel: React.FC = () => {
     clearMcpLogs,
     setMcpModalOpen,
     setAiDrawerOpen,
-  } = useEditorStore();
+  } = useEditorSelection(['activeAiProvider', 'setActiveAiProvider', 'mcpBridgeConnected', 'mcpLogs', 'addMcpLog', 'clearMcpLogs', 'setMcpModalOpen', 'setAiDrawerOpen']);
 
   const chatStreamRef = useRef<HTMLDivElement>(null);
   const [promptInput, setPromptInput] = useState('');
