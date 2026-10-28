@@ -572,16 +572,32 @@ export const LeftPanel: React.FC = () => {
                         ) : (
                           <Film className="w-4 h-4 text-[#8b93ff]" />
                         )}
-                        {asset.thumbnails[0] && (
-                          <img
-                            src={asset.thumbnails[0]}
-                            alt=""
-                            onError={(e) => {
-                              (e.currentTarget as HTMLElement).style.display = 'none';
-                            }}
-                            className="absolute inset-0 w-full h-full object-cover"
-                          />
-                        )}
+                        {(() => {
+                          const rawThumb = asset.thumbnails?.[0];
+                          const thumbSrc =
+                            rawThumb && !rawThumb.startsWith('blob:')
+                              ? rawThumb
+                              : asset.objectUrl || rawThumb;
+                          if (!thumbSrc) return null;
+                          return (
+                            <img
+                              src={thumbSrc}
+                              alt=""
+                              onError={(e) => {
+                                if (
+                                  asset.objectUrl &&
+                                  e.currentTarget.src !== asset.objectUrl
+                                ) {
+                                  e.currentTarget.src = asset.objectUrl;
+                                } else {
+                                  (e.currentTarget as HTMLElement).style.display =
+                                    'none';
+                                }
+                              }}
+                              className="absolute inset-0 w-full h-full object-cover"
+                            />
+                          );
+                        })()}
                         {(asset.type === 'audio' || asset.type === 'video') && (
                           <div
                             className={`absolute inset-0 bg-black/45 flex items-center justify-center transition-opacity ${

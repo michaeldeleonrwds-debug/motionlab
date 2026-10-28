@@ -62,8 +62,11 @@ export async function saveProjectToDB(project: ProjectData): Promise<void> {
     })),
     mediaAssets: project.mediaAssets.map((asset) => ({
       ...asset,
-      // Persist the underlying Blob in IndexedDB; strip ephemeral objectUrl
+      // Persist the underlying Blob in IndexedDB; strip ephemeral objectUrl and stale blob: thumbnails
       objectUrl: undefined,
+      thumbnails: (asset.thumbnails || []).filter(
+        (t) => typeof t === 'string' && !t.startsWith('blob:')
+      ),
     })),
   };
   await db.put(STORE_PROJECTS, toStore);
@@ -76,19 +79,47 @@ function hydrateStoredProject(stored: ProjectData): ProjectData {
     if (asset.blob && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
       objectUrl = URL.createObjectURL(asset.blob);
     }
+
+    // Filter out any stale revoked blob: URLs from previous sessions
+    const validThumbnails = (asset.thumbnails || []).filter(
+      (t) => typeof t === 'string' && !t.startsWith('blob:')
+    );
+
+    // If thumbnails were empty or only contained revoked blob URLs, use the freshly generated objectUrl for image assets
+    if (validThumbnails.length === 0 && objectUrl && asset.type === 'image') {
+      validThumbnails.push(objectUrl);
+    }
+
     return {
       ...asset,
       objectUrl,
+      thumbnails: validThumbnails,
     };
   });
 
-  const hydratedClips = (stored.clips || []).map((c) => ({
-    ...c,
-    sourceDuration:
-      c.sourceDuration === -1 || c.sourceDuration === null || c.sourceDuration === undefined
-        ? Infinity
-        : c.sourceDuration,
-  }));
+  const hydratedClips = (stored.clips || []).map((c) => {
+    // Sanitize and deduplicate keyframes by property and frame-rounded time
+    const seenKeyframes = new Set<string>();
+    const sanitizedKeyframes = (c.keyframes || []).filter((kf, idx) => {
+      const roundedTime = Math.round(kf.time * 1000) / 1000;
+      const key = `${kf.property}-${roundedTime}`;
+      if (seenKeyframes.has(key)) return false;
+      seenKeyframes.add(key);
+      if (!kf.id) {
+        kf.id = `${c.id}-${kf.property}-${roundedTime}-${idx}`;
+      }
+      return true;
+    });
+
+    return {
+      ...c,
+      keyframes: sanitizedKeyframes,
+      sourceDuration:
+        c.sourceDuration === -1 || c.sourceDuration === null || c.sourceDuration === undefined
+          ? Infinity
+          : c.sourceDuration,
+    };
+  });
 
   return {
     ...stored,

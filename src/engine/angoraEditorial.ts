@@ -25,7 +25,14 @@ export async function buildAngoraEditorial(): Promise<ProjectData> {
       transitionIn:{type:'none',duration:0},transitionOut:{type:'none',duration:0},keyframes:[]};
   }
   function key(c:TimelineClip,p:Keyframe['property'],t:number,v:number,e:Keyframe['easing']='cubic-bezier') {
-    c.keyframes.push({id:`${c.id}-${p}-${t}`,property:p,time:snap(t),value:v,easing:e,bezierPoints:[0.22,1,0.36,1]});
+    const time = snap(t);
+    const existing = c.keyframes.find(kf => kf.property === p && Math.abs(kf.time - time) < 0.001);
+    if (existing) {
+      existing.value = v;
+      existing.easing = e;
+      return;
+    }
+    c.keyframes.push({id:`${c.id}-${p}-${time}`,property:p,time,value:v,easing:e,bezierPoints:[0.22,1,0.36,1]});
   }
   function enter(c:TimelineClip, distance=46, duration=0.6, exit=true) {
     key(c,'y',0,c.y+distance); key(c,'y',duration,c.y);

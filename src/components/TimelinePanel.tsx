@@ -511,17 +511,26 @@ export const TimelinePanel: React.FC = () => {
         }`}
       >
         {/* Filmstrip Thumbnails for Video/Image Clips */}
-        {asset && asset.thumbnails.length > 0 && (
+        {asset && ((asset.thumbnails && asset.thumbnails.length > 0) || asset.objectUrl) && (
           <div className="absolute inset-0 flex opacity-35 pointer-events-none overflow-hidden">
             {Array.from({
               length: Math.max(1, Math.ceil(widthPx / 64)),
             }).map((_, idx) => {
-              const thumb = asset.thumbnails[idx % asset.thumbnails.length];
+              const rawThumb = asset.thumbnails?.[idx % (asset.thumbnails?.length || 1)];
+              const thumb = (rawThumb && !rawThumb.startsWith('blob:')) ? rawThumb : (asset.objectUrl || rawThumb);
+              if (!thumb) return null;
               return (
                 <img
                   key={idx}
                   src={thumb}
                   alt=""
+                  onError={(e) => {
+                    if (asset.objectUrl && e.currentTarget.src !== asset.objectUrl) {
+                      e.currentTarget.src = asset.objectUrl;
+                    } else {
+                      e.currentTarget.style.display = 'none';
+                    }
+                  }}
                   className="h-full w-16 object-cover shrink-0"
                 />
               );
@@ -585,7 +594,8 @@ export const TimelinePanel: React.FC = () => {
         {/* Keyframe Markers on Clip */}
         {clip.keyframes.length > 0 && (
           <div className="absolute bottom-0.5 inset-x-0 h-3 z-25 pointer-events-none">
-            {clip.keyframes.map((kf) => {
+            {clip.keyframes.map((kf, kfIdx) => {
+              const uniqueKey = `${kf.id || 'kf'}-${kfIdx}`;
               const isKfSelected = isSelected && selectedKeyframeId === kf.id;
               const leftPos = Math.min(
                 widthPx - 10,
@@ -596,7 +606,7 @@ export const TimelinePanel: React.FC = () => {
                 // Clean subtle keyframe indicator dots when unselected (preserves clip name visibility)
                 return (
                   <div
-                    key={kf.id}
+                    key={uniqueKey}
                     style={{ left: `${leftPos}px` }}
                     className="absolute bottom-0.5 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-amber-400/80 shadow-xs"
                     title={`${kf.property.toUpperCase()} @ ${kf.time.toFixed(2)}s`}
@@ -607,7 +617,7 @@ export const TimelinePanel: React.FC = () => {
               // Full interactive draggable diamonds when clip is selected
               return (
                 <button
-                  key={kf.id}
+                  key={uniqueKey}
                   type="button"
                   data-testid={`timeline-keyframe-${kf.id}`}
                   data-keyframe-prop={kf.property}

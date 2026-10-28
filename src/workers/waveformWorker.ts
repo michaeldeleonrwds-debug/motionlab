@@ -10,11 +10,16 @@ export interface WaveformWorkerResponse {
 }
 
 export function computeWaveformPeaksFromSamples(
-  samples: Float32Array,
+  samples?: Float32Array | null,
   buckets = 96
 ): number[] {
-  if (samples.length === 0 || buckets <= 0) {
-    return Array.from({ length: Math.max(1, buckets) }, () => 0.1);
+  if (
+    !samples ||
+    typeof samples.length !== 'number' ||
+    samples.length === 0 ||
+    buckets <= 0
+  ) {
+    return Array.from({ length: Math.max(1, buckets || 96) }, () => 0.1);
   }
   const blockSize = Math.max(1, Math.floor(samples.length / buckets));
   const rawPeaks: number[] = [];
@@ -52,9 +57,10 @@ const workerScope =
 
 if (workerScope && typeof workerScope.postMessage === 'function') {
   workerScope.onmessage = (event: MessageEvent<WaveformWorkerRequest>) => {
+    if (!event || !event.data) return;
     const { id, samples, buckets } = event.data;
     const peaks = computeWaveformPeaksFromSamples(samples, buckets);
-    const response: WaveformWorkerResponse = { id, peaks };
+    const response: WaveformWorkerResponse = { id: id || '', peaks };
     workerScope.postMessage(response);
   };
 }
