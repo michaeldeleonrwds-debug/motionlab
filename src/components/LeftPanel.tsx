@@ -516,18 +516,22 @@ export const LeftPanel: React.FC = () => {
                         }`}
                         title={asset.type === 'audio' || asset.type === 'video' ? 'Click to preview audio' : undefined}
                       >
-                        {asset.thumbnails[0] ? (
-                          <img
-                            src={asset.thumbnails[0]}
-                            alt={asset.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : asset.type === 'audio' ? (
+                        {asset.type === 'audio' ? (
                           <Music className="w-4 h-4 text-emerald-400" />
                         ) : asset.type === 'image' ? (
                           <ImageIcon className="w-4 h-4 text-sky-400" />
                         ) : (
                           <Film className="w-4 h-4 text-[#8b93ff]" />
+                        )}
+                        {asset.thumbnails[0] && (
+                          <img
+                            src={asset.thumbnails[0]}
+                            alt=""
+                            onError={(e) => {
+                              (e.currentTarget as HTMLElement).style.display = 'none';
+                            }}
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
                         )}
                         {(asset.type === 'audio' || asset.type === 'video') && (
                           <div

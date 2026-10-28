@@ -278,12 +278,14 @@ export const App: React.FC = () => {
       {/* Top Application Bar */}
       <TopBar />
 
-      {/* Main Workspace + Dedicated Full-Height Right-Side AI Copilot Drawer */}
+      {/* Main Workspace: Full-Height Left Sidebar + Center Workspace + Full-Height Right Copilot Drawer */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Full-Height Left Sidebar: Linear Dock + Media / Titles / Audio / SFX / Voice / Color / FX / Bins */}
+        <LeftPanel />
+
         <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-          {/* Upper Editor: Left Bin + Center Program Monitor + Right Inspector */}
+          {/* Upper Editor: Center Program Monitor + Right Inspector */}
           <div className="flex-1 flex min-h-0 overflow-hidden">
-            <LeftPanel />
             <CenterPreview />
             {!isAiDrawerOpen && <RightInspector />}
           </div>
