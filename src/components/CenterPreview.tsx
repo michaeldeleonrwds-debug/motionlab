@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../store/useEditorSelection';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Play,
@@ -46,7 +47,7 @@ export const CenterPreview: React.FC = () => {
     setCanvasZoom,
     toggleSafeGuides,
     updateClipProperties,
-  } = useEditorStore();
+  } = useEditorSelection(['project', 'currentTime', 'isPlaying', 'canvasZoom', 'showSafeGuides', 'selectedClipId', 'setCurrentTime', 'setIsPlaying', 'togglePlayPause', 'stepFrames', 'splitSelectedClipAtPlayhead', 'setCanvasZoom', 'toggleSafeGuides', 'updateClipProperties']);
 
   const monitorZoom = useWorkspaceStore((s) => s.monitorZoom);
   const setMonitorZoom = useWorkspaceStore((s) => s.setMonitorZoom);
@@ -59,6 +60,24 @@ export const CenterPreview: React.FC = () => {
   const imageElementsRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const [mediaVersion, setMediaVersion] = useState(0);
+
+  useEffect(() => () => {
+    // Workspaces remount the monitor. Release its decoders before another pool is created.
+    for (const element of [...videoElementsRef.current.values(), ...audioElementsRef.current.values()]) {
+      element.onloadeddata = null;
+      element.onseeked = null;
+      element.pause();
+      element.removeAttribute('src');
+      element.load();
+    }
+    for (const image of imageElementsRef.current.values()) {
+      image.onload = null;
+      image.removeAttribute('src');
+    }
+    videoElementsRef.current.clear();
+    audioElementsRef.current.clear();
+    imageElementsRef.current.clear();
+  }, []);
 
   // Responsive stage container dimensions
   const [containerSize, setContainerSize] = useState({ width: 800, height: 500 });
@@ -108,13 +127,16 @@ export const CenterPreview: React.FC = () => {
         const existing = videoElementsRef.current.get(clip.id);
         if (!existing || existing.dataset.srcUrl !== asset.objectUrl) {
           if (existing) {
+            existing.onloadeddata = null;
+            existing.onseeked = null;
             existing.pause();
             existing.removeAttribute('src');
+            existing.load();
           }
           const v = document.createElement('video');
           v.crossOrigin = 'anonymous';
           v.playsInline = true;
-          v.preload = 'auto';
+          v.preload = 'metadata';
           v.dataset.srcUrl = asset.objectUrl;
           v.src = asset.objectUrl;
           v.onloadeddata = () => setMediaVersion((n) => n + 1);
@@ -128,10 +150,11 @@ export const CenterPreview: React.FC = () => {
           if (existing) {
             existing.pause();
             existing.removeAttribute('src');
+            existing.load();
           }
           const a = document.createElement('audio');
           a.crossOrigin = 'anonymous';
-          a.preload = 'auto';
+          a.preload = 'metadata';
           a.dataset.srcUrl = asset.objectUrl;
           a.src = asset.objectUrl;
           audioElementsRef.current.set(clip.id, a);
@@ -140,6 +163,10 @@ export const CenterPreview: React.FC = () => {
         currentImageIds.add(asset.id);
         const existing = imageElementsRef.current.get(asset.id);
         if (!existing || existing.dataset.srcUrl !== asset.objectUrl) {
+          if (existing) {
+            existing.onload = null;
+            existing.removeAttribute('src');
+          }
           const img = new Image();
           img.crossOrigin = 'anonymous';
           img.dataset.srcUrl = asset.objectUrl;
@@ -153,6 +180,8 @@ export const CenterPreview: React.FC = () => {
     // Cleanup removed clip elements
     for (const [id, v] of videoElementsRef.current.entries()) {
       if (!currentVideoIds.has(id)) {
+        v.onloadeddata = null;
+        v.onseeked = null;
         v.pause();
         v.removeAttribute('src');
         v.load();
@@ -169,6 +198,7 @@ export const CenterPreview: React.FC = () => {
     }
     for (const [id, img] of imageElementsRef.current.entries()) {
       if (!currentImageIds.has(id)) {
+        img.onload = null;
         img.removeAttribute('src');
         imageElementsRef.current.delete(id);
       }
@@ -196,7 +226,7 @@ export const CenterPreview: React.FC = () => {
         v.playbackRate = clip.playbackSpeed || 1;
 
         if (isClipActive) {
-          if (Math.abs(v.currentTime - targetSrcTime) > 0.08) {
+          if (!v.seeking && Math.abs(v.currentTime - targetSrcTime) > 0.05) {
             v.currentTime = targetSrcTime;
           }
           if (isPlaying && v.paused) {
@@ -223,7 +253,7 @@ export const CenterPreview: React.FC = () => {
         a.playbackRate = clip.playbackSpeed || 1;
 
         if (isClipActive) {
-          if (Math.abs(a.currentTime - targetSrcTime) > 0.08) {
+          if (!a.seeking && Math.abs(a.currentTime - targetSrcTime) > 0.05) {
             a.currentTime = targetSrcTime;
           }
           if (isPlaying && a.paused) {
@@ -252,8 +282,9 @@ export const CenterPreview: React.FC = () => {
 
     renderCompositionAtTime(ctx, project, currentTime, sources, {
       showSafeGuides,
+      renderScale: Math.min(1, Math.max(0.1, canvas.getBoundingClientRect().width / getResolutionDimensions(project.aspectRatio, project.resolution, project.customWidth, project.customHeight).width * window.devicePixelRatio)),
     });
-  }, [currentTime, mediaVersion, project, showSafeGuides]);
+  }, [currentTime, mediaVersion, project, showSafeGuides, containerSize, monitorZoom, canvasZoom, isMonitorMaximized]);
 
   // Direct manipulation mouse event handlers
   useEffect(() => {
@@ -620,8 +651,8 @@ export const CenterPreview: React.FC = () => {
       </div>
 
       {/* Floating-Style Linear Transport Bar */}
-      <div className="h-11 bg-[#0B0F16] border-t border-[#2A3341] px-4 flex items-center justify-center shrink-0">
-        <div className="bg-[#141A23] border border-[#2A3341] rounded-full px-3.5 py-1 flex items-center gap-4 shadow-lg">
+      <div className="h-9 bg-[#0B0F16] border-t border-[#1C2330] px-3 flex items-center justify-center shrink-0">
+        <div className="bg-[#141A23] border border-[#252E3E] rounded-full px-3 py-0.5 flex items-center gap-3.5 shadow-md">
           {/* Left: Timecode Readout */}
           <div className="flex items-center gap-1.5 whitespace-nowrap">
             <span

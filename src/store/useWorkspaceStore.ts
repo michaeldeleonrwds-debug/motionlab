@@ -87,9 +87,9 @@ interface WorkspaceState {
 const STORAGE_KEY = 'motionlab_workspace_layout_v4';
 
 const DEFAULT_PANEL_SIZES: WorkspacePanelSizes = {
-  leftSidebarWidth: 340,
-  rightInspectorWidth: 320,
-  timelineHeight: 310,
+  leftSidebarWidth: 300,
+  rightInspectorWidth: 260,
+  timelineHeight: 280,
 };
 
 const DEFAULT_COLLAPSED: WorkspaceCollapsedState = {

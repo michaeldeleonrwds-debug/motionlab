@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../store/useEditorSelection';
 import React, { useRef, useState } from 'react';
 import {
   FolderOpen,
@@ -22,6 +23,7 @@ import {
   Mic,
   Volume2,
   Search,
+  PanelLeftClose,
 } from 'lucide-react';
 import { useEditorStore, type LeftSidebarTab } from '../store/useEditorStore';
 import { importMediaFile } from '../engine/mediaImportEngine';
@@ -180,7 +182,7 @@ export const LeftPanel: React.FC = () => {
     isImporting,
     setIsImporting,
     setProjectModalOpen,
-  } = useEditorStore();
+  } = useEditorSelection(['project', 'activeLeftTab', 'isAiDrawerOpen', 'setActiveLeftTab', 'toggleAiDrawer', 'addMediaAssets', 'removeMediaAsset', 'addMediaClipToTimeline', 'addTextClipToTimeline', 'selectedClipId', 'setClipTransition', 'updateClipColorEffects', 'importError', 'setImportError', 'isImporting', 'setIsImporting', 'setProjectModalOpen']);
 
   const leftSidebarWidth = useWorkspaceStore((s) => s.panelSizes.leftSidebarWidth);
 
@@ -320,9 +322,13 @@ export const LeftPanel: React.FC = () => {
     return true;
   });
 
-  const effectiveSidebarWidth =
-    activeLeftTab === 'voice' || activeLeftTab === 'sfx' || activeLeftTab === 'filters'
-      ? Math.max(420, leftSidebarWidth)
+  const isLeftCollapsed = useWorkspaceStore((s) => s.collapsed.leftSidebar);
+  const togglePanelCollapsed = useWorkspaceStore((s) => s.togglePanelCollapsed);
+
+  const effectiveSidebarWidth = isLeftCollapsed
+    ? 52
+    : activeLeftTab === 'voice' || activeLeftTab === 'sfx' || activeLeftTab === 'filters'
+      ? Math.max(380, leftSidebarWidth)
       : leftSidebarWidth;
 
   return (
@@ -344,8 +350,13 @@ export const LeftPanel: React.FC = () => {
               onClick={() => {
                 if (item.id === 'ai-mcp') {
                   toggleAiDrawer();
+                } else if (activeLeftTab === item.id && !isLeftCollapsed) {
+                  togglePanelCollapsed('leftSidebar');
                 } else {
                   setActiveLeftTab(item.id);
+                  if (isLeftCollapsed) {
+                    togglePanelCollapsed('leftSidebar');
+                  }
                 }
               }}
               className={`w-10 py-1.5 rounded-md flex flex-col items-center gap-1 text-[9px] font-medium transition-all cursor-pointer relative ${
@@ -353,6 +364,7 @@ export const LeftPanel: React.FC = () => {
                   ? 'bg-[#181822] text-[#f4f4f5]'
                   : 'text-[#71717a] hover:text-[#d4d4d8] hover:bg-[#131319]'
               }`}
+              title={item.label}
             >
               {active && (
                 <span className="absolute left-0 top-2 bottom-2 w-0.5 bg-[#5e6ad2] rounded-r" />
@@ -368,8 +380,9 @@ export const LeftPanel: React.FC = () => {
         })}
       </nav>
 
-      {/* Active Bin Content Column */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+      {/* Active Bin Content Column (hidden when collapsed to give monitor full stage) */}
+      {!isLeftCollapsed && (
+        <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         {/* Hidden Multi-file Input */}
         <input
           ref={fileInputRef}
@@ -422,6 +435,15 @@ export const LeftPanel: React.FC = () => {
                 >
                   <Upload className="w-3 h-3" />
                   <span>Import</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="collapse-sidebar-btn"
+                  onClick={() => togglePanelCollapsed('leftSidebar')}
+                  className="h-6 w-6 flex items-center justify-center text-[#71717a] hover:text-[#f4f4f5] hover:bg-[#1f1f28] rounded cursor-pointer transition-colors"
+                  title="Collapse sidebar to icon dock"
+                >
+                  <PanelLeftClose className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -548,9 +570,9 @@ export const LeftPanel: React.FC = () => {
                         asset.id
                       );
                     }}
-                    className="bg-[#121217] border border-[#22222c] hover:border-[#323241] rounded-lg p-2.5 flex flex-col gap-2 group transition-all"
+                    className="bg-[#121217] border border-[#22222c] hover:border-[#3b3b4f] rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 group transition-all"
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <div
                         onClick={(e) => {
                           if (asset.type === 'audio' || asset.type === 'video') {
@@ -558,7 +580,7 @@ export const LeftPanel: React.FC = () => {
                             handleTogglePlayMedia(asset);
                           }
                         }}
-                        className={`w-16 h-10 bg-[#09090c] border rounded overflow-hidden shrink-0 flex items-center justify-center relative ${
+                        className={`w-11 h-8 bg-[#09090c] border rounded overflow-hidden shrink-0 flex items-center justify-center relative ${
                           asset.type === 'audio' || asset.type === 'video' ? 'cursor-pointer group/thumb' : ''
                         } ${
                           playingAssetId === asset.id ? 'border-emerald-500 ring-1 ring-emerald-500/50' : 'border-[#22222c]'
@@ -566,11 +588,11 @@ export const LeftPanel: React.FC = () => {
                         title={asset.type === 'audio' || asset.type === 'video' ? 'Click to preview audio' : undefined}
                       >
                         {asset.type === 'audio' ? (
-                          <Music className="w-4 h-4 text-emerald-400" />
+                          <Music className="w-3.5 h-3.5 text-emerald-400" />
                         ) : asset.type === 'image' ? (
-                          <ImageIcon className="w-4 h-4 text-sky-400" />
+                          <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
                         ) : (
-                          <Film className="w-4 h-4 text-[#8b93ff]" />
+                          <Film className="w-3.5 h-3.5 text-[#8b93ff]" />
                         )}
                         {(() => {
                           const rawThumb = asset.thumbnails?.[0];
@@ -600,89 +622,64 @@ export const LeftPanel: React.FC = () => {
                         })()}
                         {(asset.type === 'audio' || asset.type === 'video') && (
                           <div
-                            className={`absolute inset-0 bg-black/45 flex items-center justify-center transition-opacity ${
+                            className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity ${
                               playingAssetId === asset.id ? 'opacity-100' : 'opacity-0 group-hover/thumb:opacity-100'
                             }`}
                           >
                             {playingAssetId === asset.id ? (
-                              <Pause className="w-4 h-4 text-emerald-400 fill-current" />
+                              <Pause className="w-3 h-3 text-emerald-400 fill-current" />
                             ) : (
-                              <Play className="w-4 h-4 text-white fill-current ml-0.5" />
+                              <Play className="w-3 h-3 text-white fill-current ml-0.5" />
                             )}
                           </div>
                         )}
-                        <span className="absolute bottom-0.5 right-0.5 px-1 py-0 bg-black/80 text-[9px] font-mono text-[#e4e4e7] rounded-xs">
-                          {asset.duration.toFixed(1)}s
-                        </span>
                       </div>
 
-                      <div className="flex-1 min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div
-                          className="text-xs font-medium text-[#f4f4f5] truncate"
+                          className="text-xs font-medium text-[#f4f4f5] truncate leading-tight"
                           title={asset.name}
                         >
                           {asset.name}
                         </div>
-                        <div className="text-[10px] font-mono text-[#71717a] truncate mt-0.5">
-                          {asset.codecInfo}
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#71717a] truncate mt-0.5">
+                          <span className="uppercase text-[9px] px-1 py-0 bg-[#1c1c24] rounded-xs font-semibold text-[#a1a1aa]">{asset.type}</span>
+                          <span>{asset.duration.toFixed(1)}s</span>
                         </div>
                       </div>
                     </div>
 
-                    {asset.waveform.length > 0 && (
-                      <div className="h-3.5 bg-[#0a0a0e] px-1 flex items-end gap-[1px] rounded overflow-hidden">
-                        {asset.waveform.slice(0, 48).map((peak, idx) => (
-                          <div
-                            key={idx}
-                            style={{ height: `${Math.max(15, peak * 100)}%` }}
-                            className={`flex-1 rounded-t-xs ${
-                              asset.type === 'audio'
-                                ? 'bg-emerald-500/70'
-                                : 'bg-[#7c86ff]/60'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between pt-0.5 gap-1.5">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                      {(asset.type === 'audio' || asset.type === 'video') && (
                         <button
                           type="button"
-                          data-testid={`add-asset-btn-${asset.name}`}
-                          onClick={() => addMediaClipToTimeline(asset.id)}
-                          className="h-6 px-2.5 bg-[#191922] hover:bg-[#5e6ad2] border border-[#282836] hover:border-[#5e6ad2] text-[#e4e4e7] hover:text-white rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer"
+                          data-testid={`preview-asset-btn-${asset.name}`}
+                          onClick={() => handleTogglePlayMedia(asset)}
+                          className={`h-6 w-6 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                            playingAssetId === asset.id
+                              ? 'bg-emerald-500 text-black font-semibold'
+                              : 'text-[#8e8e98] hover:text-white hover:bg-[#1f1f2a]'
+                          }`}
+                          title={playingAssetId === asset.id ? 'Pause preview' : 'Play / audition'}
                         >
-                          <Plus className="w-3 h-3" />
-                          <span>Add to Timeline</span>
+                          {playingAssetId === asset.id ? (
+                            <Pause className="w-3 h-3 fill-current" />
+                          ) : (
+                            <Play className="w-3 h-3 fill-current ml-0.5" />
+                          )}
                         </button>
+                      )}
 
-                        {(asset.type === 'audio' || asset.type === 'video') && (
-                          <button
-                            type="button"
-                            data-testid={`preview-asset-btn-${asset.name}`}
-                            onClick={() => handleTogglePlayMedia(asset)}
-                            className={`h-6 px-2 rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer border ${
-                              playingAssetId === asset.id
-                                ? 'bg-emerald-500 text-black border-emerald-500 hover:bg-emerald-400 font-semibold'
-                                : 'bg-[#191922] hover:bg-[#252532] border-[#282836] text-[#e4e4e7] hover:text-white'
-                            }`}
-                            title={playingAssetId === asset.id ? 'Pause preview' : 'Play / audition media'}
-                          >
-                            {playingAssetId === asset.id ? (
-                              <>
-                                <Pause className="w-3 h-3 fill-current" />
-                                <span>Pause</span>
-                              </>
-                            ) : (
-                              <>
-                                <Play className="w-3 h-3 fill-current ml-0.5" />
-                                <span>Play</span>
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </div>
+                      <button
+                        type="button"
+                        data-testid={`add-asset-btn-${asset.name}`}
+                        onClick={() => addMediaClipToTimeline(asset.id)}
+                        className="h-6 px-2 bg-[#191922] hover:bg-[#5e6ad2] border border-[#282836] hover:border-[#5e6ad2] text-[#e4e4e7] hover:text-white rounded-md text-[10px] font-medium flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer"
+                        title="Add clip to sequence"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span className="hidden sm:inline">Add</span>
+                      </button>
 
                       <button
                         type="button"
@@ -694,10 +691,10 @@ export const LeftPanel: React.FC = () => {
                           }
                           removeMediaAsset(asset.id);
                         }}
-                        className="h-6 w-6 flex items-center justify-center text-[#63636e] hover:text-rose-400 rounded transition-colors cursor-pointer shrink-0"
+                        className="h-6 w-6 flex items-center justify-center text-[#63636e] hover:text-rose-400 hover:bg-rose-950/20 rounded transition-colors cursor-pointer shrink-0 opacity-0 group-hover:opacity-100"
                         title="Remove from project"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   </div>
@@ -998,6 +995,7 @@ export const LeftPanel: React.FC = () => {
           </div>
         )}
       </div>
+      )}
     </aside>
   );
 };

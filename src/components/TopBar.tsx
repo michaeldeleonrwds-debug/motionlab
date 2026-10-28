@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../store/useEditorSelection';
 import React, { useState } from 'react';
 import {
   Undo2,
@@ -16,6 +17,8 @@ import {
   Zap,
   Palette,
   Volume2,
+  PanelLeft,
+  PanelRight,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { useWorkspaceStore, type WorkspaceId } from '../store/useWorkspaceStore';
@@ -78,11 +81,13 @@ export const TopBar: React.FC = () => {
     setProjectModalOpen,
     setMcpModalOpen,
     toggleAiDrawer,
-  } = useEditorStore();
+  } = useEditorSelection(['project', 'past', 'future', 'saveStatus', 'mcpBridgeConnected', 'isAiDrawerOpen', 'undo', 'redo', 'renameProject', 'setProjectFormat', 'saveCurrentProject', 'setExportModalOpen', 'setProjectModalOpen', 'setMcpModalOpen', 'toggleAiDrawer']);
 
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const toggleCommandPalette = useWorkspaceStore((s) => s.toggleCommandPalette);
+  const collapsed = useWorkspaceStore((s) => s.collapsed);
+  const togglePanelCollapsed = useWorkspaceStore((s) => s.togglePanelCollapsed);
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(project.name);
@@ -317,6 +322,37 @@ export const TopBar: React.FC = () => {
             <option value={30} className="bg-[#141A23]">30 fps</option>
             <option value={60} className="bg-[#141A23]">60 fps</option>
           </select>
+        </div>
+
+        {/* Quick Panel Toggle Buttons */}
+        <div className="hidden md:flex items-center bg-[#141A23] border border-[#2A3341] rounded-md p-0.5">
+          <button
+            type="button"
+            data-testid="topbar-toggle-left-btn"
+            onClick={() => togglePanelCollapsed('leftSidebar')}
+            className={`h-6 px-1.5 flex items-center justify-center rounded text-[11px] transition-colors cursor-pointer ${
+              !collapsed.leftSidebar
+                ? 'bg-[#1D2531] text-[#E8EDF5]'
+                : 'text-[#71717a] hover:text-[#E8EDF5]'
+            }`}
+            title="Toggle Media Sidebar (Ctrl+B)"
+          >
+            <PanelLeft className="w-3.5 h-3.5" />
+          </button>
+          <div className="w-px h-3.5 bg-[#2A3341]" />
+          <button
+            type="button"
+            data-testid="topbar-toggle-right-btn"
+            onClick={() => togglePanelCollapsed('rightInspector')}
+            className={`h-6 px-1.5 flex items-center justify-center rounded text-[11px] transition-colors cursor-pointer ${
+              !collapsed.rightInspector
+                ? 'bg-[#1D2531] text-[#E8EDF5]'
+                : 'text-[#71717a] hover:text-[#E8EDF5]'
+            }`}
+            title="Toggle Inspector (Ctrl+I)"
+          >
+            <PanelRight className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         {/* AI Copilot Drawer Toggle */}

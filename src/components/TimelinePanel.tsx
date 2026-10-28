@@ -1,3 +1,5 @@
+import { useEditorSelection } from '../store/useEditorSelection';
+import { getWaveformPeaks } from '../engine/waveformDisplay';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Scissors,
@@ -45,7 +47,6 @@ export const TimelinePanel: React.FC = () => {
     project,
     selectedClipId,
     selectedKeyframeId,
-    currentTime,
     timelineZoom,
     snapEnabled,
     activeSnapTime,
@@ -71,7 +72,21 @@ export const TimelinePanel: React.FC = () => {
     setClipTransition,
     updateClipProperties,
     updateClipKeyframe,
-  } = useEditorStore();
+  } = useEditorSelection(['project', 'selectedClipId', 'selectedKeyframeId', 'timelineZoom', 'snapEnabled', 'activeSnapTime', 'selectClip', 'selectKeyframe', 'setCurrentTime', 'setIsPlaying', 'setTimelineZoom', 'toggleSnap', 'setActiveSnapTime', 'addTrack', 'toggleTrackMute', 'toggleTrackVisible', 'toggleTrackLock', 'addMediaClipToTimeline', 'moveClip', 'trimClipLeftAction', 'trimClipRightAction', 'splitSelectedClipAtPlayhead', 'splitClipById', 'deleteClip', 'duplicateClip', 'setClipTransition', 'updateClipProperties', 'updateClipKeyframe']);
+
+  const playheadRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const update = () => {
+      if (playheadRef.current) {
+        const x = useEditorStore.getState().currentTime * timelineZoom;
+        playheadRef.current.style.transform = `translate3d(${x}px, 0, 0)`;
+      }
+    };
+    update();
+    return useEditorStore.subscribe((state, previous) => {
+      if (state.currentTime !== previous.currentTime) update();
+    });
+  }, [timelineZoom]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const trackHeadersRef = useRef<HTMLDivElement>(null);
@@ -325,14 +340,14 @@ export const TimelinePanel: React.FC = () => {
           const snapStart = findSnapTarget(
             proposedStart,
             project.clips,
-            currentTime,
+            useEditorStore.getState().currentTime,
             snapThresholdSec,
             [dragState.clipId]
           );
           const snapEnd = findSnapTarget(
             proposedStart + dragState.initialDuration,
             project.clips,
-            currentTime,
+            useEditorStore.getState().currentTime,
             snapThresholdSec,
             [dragState.clipId]
           );
@@ -362,7 +377,7 @@ export const TimelinePanel: React.FC = () => {
           const snap = findSnapTarget(
             proposedStart,
             project.clips,
-            currentTime,
+            useEditorStore.getState().currentTime,
             snapThresholdSec,
             [dragState.clipId]
           );
@@ -384,7 +399,7 @@ export const TimelinePanel: React.FC = () => {
           const snap = findSnapTarget(
             proposedEnd,
             project.clips,
-            currentTime,
+            useEditorStore.getState().currentTime,
             snapThresholdSec,
             [dragState.clipId]
           );
@@ -422,7 +437,6 @@ export const TimelinePanel: React.FC = () => {
     timelineZoom,
     snapEnabled,
     project.clips,
-    currentTime,
     moveClip,
     trimClipLeftAction,
     trimClipRightAction,
@@ -510,14 +524,14 @@ export const TimelinePanel: React.FC = () => {
             : 'hover:brightness-110 z-10'
         }`}
       >
-        {/* Filmstrip Thumbnails for Video/Image Clips */}
-        {asset && ((asset.thumbnails && asset.thumbnails.length > 0) || asset.objectUrl) && (
-          <div className="absolute inset-0 flex opacity-35 pointer-events-none overflow-hidden">
+        {/* Filmstrip Thumbnails for Video/Image Clips (capped for high rendering performance) */}
+        {asset && asset.type !== 'audio' && ((asset.thumbnails && asset.thumbnails.length > 0) || (asset.type === 'image' && asset.objectUrl)) && (
+          <div className="absolute inset-0 flex opacity-30 pointer-events-none overflow-hidden">
             {Array.from({
-              length: Math.max(1, Math.ceil(widthPx / 64)),
+              length: Math.min(8, Math.max(1, Math.ceil(widthPx / 96))),
             }).map((_, idx) => {
               const rawThumb = asset.thumbnails?.[idx % (asset.thumbnails?.length || 1)];
-              const thumb = (rawThumb && !rawThumb.startsWith('blob:')) ? rawThumb : (asset.objectUrl || rawThumb);
+              const thumb = rawThumb || (asset.type === 'image' ? asset.objectUrl : undefined);
               if (!thumb) return null;
               return (
                 <img
@@ -525,31 +539,45 @@ export const TimelinePanel: React.FC = () => {
                   src={thumb}
                   alt=""
                   onError={(e) => {
-                    if (asset.objectUrl && e.currentTarget.src !== asset.objectUrl) {
+                    if (asset.type === 'image' && asset.objectUrl && e.currentTarget.src !== asset.objectUrl) {
                       e.currentTarget.src = asset.objectUrl;
                     } else {
                       e.currentTarget.style.display = 'none';
                     }
                   }}
-                  className="h-full w-16 object-cover shrink-0"
+                  className="h-full w-24 object-cover shrink-0"
                 />
               );
             })}
           </div>
         )}
 
-        {/* Audio Waveform Bars */}
+        {/* Audio Waveform rendered via single hardware-accelerated SVG path */}
         {asset && asset.waveform.length > 0 && (
-          <div className="absolute inset-x-0 bottom-0 h-5 flex items-end gap-[1px] px-1 opacity-70 pointer-events-none">
-            {asset.waveform.map((peak, i) => (
-              <div
-                key={i}
-                style={{ height: `${Math.max(12, peak * 100)}%` }}
-                className={`flex-1 rounded-t-xs ${
-                  clip.type === 'audio' ? 'bg-emerald-300' : 'bg-[#949cff]'
-                }`}
+          <div className="absolute inset-x-0 bottom-0 h-5 px-1 opacity-75 pointer-events-none overflow-hidden flex items-end">
+            <svg
+              viewBox="0 0 100 20"
+              preserveAspectRatio="none"
+              className={`w-full h-full ${clip.type === 'audio' ? 'text-emerald-400' : 'text-[#a5acff]'}`}
+            >
+              <path
+                d={(() => {
+                  const sampleCount = Math.min(64, Math.max(8, Math.floor(widthPx / 8)));
+                  const peaks = getWaveformPeaks(asset.waveform, sampleCount);
+                  const step = 100 / Math.max(1, peaks.length);
+                  let dStr = '';
+                  for (let i = 0; i < peaks.length; i++) {
+                    const h = Math.max(2, peaks[i] * 18);
+                    const x = (i + 0.5) * step;
+                    dStr += `M ${x.toFixed(1)} 20 L ${x.toFixed(1)} ${(20 - h).toFixed(1)} `;
+                  }
+                  return dStr;
+                })()}
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
               />
-            ))}
+            </svg>
           </div>
         )}
 
@@ -1401,13 +1429,17 @@ export const TimelinePanel: React.FC = () => {
             {/* Playhead Line & Scrub Cap */}
             <div
               data-testid="timeline-playhead"
-              style={{ left: `${currentTime * timelineZoom}px` }}
+              ref={playheadRef}
+              style={{
+                transform: `translate3d(${useEditorStore.getState().currentTime * timelineZoom}px, 0, 0)`,
+                left: 0,
+              }}
               onMouseDown={(e) => {
                 e.stopPropagation();
                 setIsPlaying(false);
                 setDragState({ mode: 'scrub' });
               }}
-              className="absolute top-0 bottom-0 w-px bg-rose-500 z-40 cursor-ew-resize"
+              className="absolute top-0 bottom-0 w-px bg-rose-500 z-40 cursor-ew-resize will-change-transform"
             >
               <div className="w-3 h-3.5 bg-rose-500 -translate-x-[5.5px] rounded-t-xs clip-path-playhead shadow" />
             </div>
@@ -1426,7 +1458,7 @@ export const TimelinePanel: React.FC = () => {
             type="button"
             data-testid="ctx-split-clip"
             onClick={() => {
-              splitClipById(contextMenu.clipId, currentTime);
+              splitClipById(contextMenu.clipId, useEditorStore.getState().currentTime);
               setContextMenu(null);
             }}
             className="w-full px-3 py-1.5 text-left hover:bg-[#5e6ad2] hover:text-white flex items-center gap-2 cursor-pointer"

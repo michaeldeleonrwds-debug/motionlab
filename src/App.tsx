@@ -25,6 +25,7 @@ import {
   MOTIONLAB_MCP_TOOLS,
 } from './engine/mcpEngine';
 import { getProjectDuration } from './engine/timelineEngine';
+import { usePlaybackClock } from './playback/usePlaybackClock';
 import { Minimize2, Volume2, Mic } from 'lucide-react';
 
 declare global {
@@ -39,6 +40,7 @@ declare global {
 }
 
 export const App: React.FC = () => {
+  usePlaybackClock();
   const initFromStorage = useEditorStore((s) => s.initFromStorage);
   const project = useEditorStore((s) => s.project);
   const isAiDrawerOpen = useEditorStore((s) => s.isAiDrawerOpen);
@@ -48,6 +50,8 @@ export const App: React.FC = () => {
   const panelSizes = useWorkspaceStore((s) => s.panelSizes);
   const setPanelSize = useWorkspaceStore((s) => s.setPanelSize);
   const resetPanelSizes = useWorkspaceStore((s) => s.resetPanelSizes);
+  const collapsed = useWorkspaceStore((s) => s.collapsed);
+  const togglePanelCollapsed = useWorkspaceStore((s) => s.togglePanelCollapsed);
   const isMonitorMaximized = useWorkspaceStore((s) => s.isMonitorMaximized);
   const toggleMonitorMaximized = useWorkspaceStore((s) => s.toggleMonitorMaximized);
   const isCommandPaletteOpen = useWorkspaceStore((s) => s.isCommandPaletteOpen);
@@ -187,6 +191,20 @@ export const App: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         toggleCommandPalette();
+        return;
+      }
+
+      // Ctrl/Cmd + B: Toggle Left Sidebar
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && !isTextTypingTarget) {
+        e.preventDefault();
+        togglePanelCollapsed('leftSidebar');
+        return;
+      }
+
+      // Ctrl/Cmd + I: Toggle Right Inspector
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i' && !isTextTypingTarget) {
+        e.preventDefault();
+        togglePanelCollapsed('rightInspector');
         return;
       }
 
@@ -415,21 +433,23 @@ export const App: React.FC = () => {
             {activeWorkspace === 'edit' && (
               <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
                 <LeftPanel />
-                <SplitResizer
-                  direction="horizontal"
-                  onResize={(delta) =>
-                    setPanelSize(
-                      'leftSidebarWidth',
-                      panelSizes.leftSidebarWidth + delta
-                    )
-                  }
-                  onReset={resetPanelSizes}
-                />
+                {!collapsed.leftSidebar && (
+                  <SplitResizer
+                    direction="horizontal"
+                    onResize={(delta) =>
+                      setPanelSize(
+                        'leftSidebarWidth',
+                        panelSizes.leftSidebarWidth + delta
+                      )
+                    }
+                    onReset={resetPanelSizes}
+                  />
+                )}
 
                 <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
                   <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
                     <CenterPreview />
-                    {!isAiDrawerOpen && (
+                    {!isAiDrawerOpen && !collapsed.rightInspector && (
                       <>
                         <SplitResizer
                           direction="horizontal"
@@ -465,21 +485,23 @@ export const App: React.FC = () => {
             {activeWorkspace === 'motion' && (
               <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
                 <LeftPanel />
-                <SplitResizer
-                  direction="horizontal"
-                  onResize={(delta) =>
-                    setPanelSize(
-                      'leftSidebarWidth',
-                      panelSizes.leftSidebarWidth + delta
-                    )
-                  }
-                  onReset={resetPanelSizes}
-                />
+                {!collapsed.leftSidebar && (
+                  <SplitResizer
+                    direction="horizontal"
+                    onResize={(delta) =>
+                      setPanelSize(
+                        'leftSidebarWidth',
+                        panelSizes.leftSidebarWidth + delta
+                      )
+                    }
+                    onReset={resetPanelSizes}
+                  />
+                )}
 
                 <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
                   <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden">
                     <CenterPreview />
-                    {!isAiDrawerOpen && (
+                    {!isAiDrawerOpen && !collapsed.rightInspector && (
                       <>
                         <SplitResizer
                           direction="horizontal"

@@ -1,3 +1,4 @@
+import { useEditorSelection } from '../store/useEditorSelection';
 import React from 'react';
 import {
   Sliders,
@@ -18,6 +19,7 @@ import {
   Scan,
   ChevronLeft,
   ChevronRight,
+  PanelRightClose,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { evaluateClipTransform } from '../engine/keyframeEngine';
@@ -41,7 +43,6 @@ export const RightInspector: React.FC = () => {
     project,
     selectedClipId,
     selectedKeyframeId,
-    currentTime,
     selectKeyframe,
     updateClipProperties,
     updateClipColorEffects,
@@ -55,7 +56,8 @@ export const RightInspector: React.FC = () => {
     removeClipKeyframe,
     setCurrentTime,
     deleteClip,
-  } = useEditorStore();
+  } = useEditorSelection(['project', 'selectedClipId', 'selectedKeyframeId', 'selectKeyframe', 'updateClipProperties', 'updateClipColorEffects', 'updateClipCrop', 'updateClipMask', 'updateClipTextStyle', 'updateClipSpeed', 'setClipTransition', 'setClipKeyframe', 'updateClipKeyframe', 'removeClipKeyframe', 'setCurrentTime', 'deleteClip']);
+  const currentTime = useEditorStore((state) => state.selectedClipId ? state.currentTime : 0);
 
   const clip = project.clips.find((c) => c.id === selectedClipId);
 
@@ -67,11 +69,22 @@ export const RightInspector: React.FC = () => {
         className="bg-[#141A23] border-l border-[#2A3341] p-3.5 flex flex-col justify-between select-none shrink-0 transition-[width] duration-75 text-[#E8EDF5]"
       >
         <div className="space-y-3.5">
-          <div className="flex items-center gap-2 border-b border-[#1f1f26] pb-2.5">
-            <Sliders className="w-3.5 h-3.5 text-[#8b93ff]" />
-            <span className="text-xs font-semibold tracking-tight text-[#f4f4f5]">
-              Inspector
-            </span>
+          <div className="flex items-center justify-between border-b border-[#1f1f26] pb-2.5">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-3.5 h-3.5 text-[#8b93ff]" />
+              <span className="text-xs font-semibold tracking-tight text-[#f4f4f5]">
+                Inspector
+              </span>
+            </div>
+            <button
+              type="button"
+              data-testid="collapse-inspector-btn"
+              onClick={() => useWorkspaceStore.getState().togglePanelCollapsed('rightInspector')}
+              className="p-1 text-[#71717a] hover:text-[#f4f4f5] rounded cursor-pointer transition-colors"
+              title="Collapse Inspector (Ctrl+I)"
+            >
+              <PanelRightClose className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <div className="bg-[#121217] border border-[#22222c] rounded-lg p-3 space-y-2 text-xs">
@@ -168,15 +181,26 @@ export const RightInspector: React.FC = () => {
             {clip.name}
           </span>
         </div>
-        <button
-          type="button"
-          data-testid="inspector-delete-clip-btn"
-          onClick={() => deleteClip(clip.id)}
-          className="p-1 text-[#71717a] hover:text-rose-400 rounded transition-colors cursor-pointer"
-          title="Delete Selected Clip (Delete)"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            data-testid="inspector-delete-clip-btn"
+            onClick={() => deleteClip(clip.id)}
+            className="p-1 text-[#71717a] hover:text-rose-400 rounded transition-colors cursor-pointer"
+            title="Delete Selected Clip (Delete)"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            data-testid="collapse-inspector-btn"
+            onClick={() => useWorkspaceStore.getState().togglePanelCollapsed('rightInspector')}
+            className="p-1 text-[#71717a] hover:text-[#f4f4f5] rounded cursor-pointer transition-colors"
+            title="Collapse Inspector (Ctrl+I)"
+          >
+            <PanelRightClose className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Scrollable Inspector Sections */}
