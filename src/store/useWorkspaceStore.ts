@@ -9,7 +9,18 @@ import { create } from 'zustand';
 
 export type WorkspaceId = 'edit' | 'motion' | 'color' | 'audio' | 'ai';
 
-export type MonitorZoomMode = 'fit' | 'fill' | '25' | '50' | '100' | '200';
+export type MonitorZoomMode =
+  | 'fit'
+  | 'fill'
+  | '25'
+  | '50'
+  | '75'
+  | '100'
+  | '200'
+  | '400'
+  | 'custom';
+
+export type PreviewQuality = 'auto' | 'full' | 'half' | 'quarter';
 
 export type TimelineDensity = 'compact' | 'standard' | 'expanded';
 
@@ -62,8 +73,17 @@ interface WorkspaceState {
   // Program monitor display state
   monitorZoom: MonitorZoomMode;
   setMonitorZoom: (zoom: MonitorZoomMode) => void;
+  monitorCustomZoom: number;
+  setMonitorCustomZoom: (zoom: number) => void;
+  previewQuality: PreviewQuality;
+  setPreviewQuality: (quality: PreviewQuality) => void;
   isMonitorMaximized: boolean;
   toggleMonitorMaximized: () => void;
+
+  // Focus / Cinema Mode (full preview, minimal controls, Esc to restore)
+  isFocusMode: boolean;
+  toggleFocusMode: () => void;
+  setFocusMode: (focus: boolean) => void;
 
   // Timeline display state
   timelineDensity: TimelineDensity;
@@ -89,7 +109,7 @@ const STORAGE_KEY = 'motionlab_workspace_layout_v4';
 const DEFAULT_PANEL_SIZES: WorkspacePanelSizes = {
   leftSidebarWidth: 300,
   rightInspectorWidth: 260,
-  timelineHeight: 280,
+  timelineHeight: 240,
 };
 
 const DEFAULT_COLLAPSED: WorkspaceCollapsedState = {
@@ -104,6 +124,8 @@ function loadSavedLayout(): {
   panelSizes?: WorkspacePanelSizes;
   timelineDensity?: TimelineDensity;
   timelineNavPreferences?: Partial<TimelineNavPreferences>;
+  previewQuality?: PreviewQuality;
+  monitorZoom?: MonitorZoomMode;
 } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -121,6 +143,8 @@ function saveLayout(data: {
   panelSizes: WorkspacePanelSizes;
   timelineDensity: TimelineDensity;
   timelineNavPreferences: TimelineNavPreferences;
+  previewQuality?: PreviewQuality;
+  monitorZoom?: MonitorZoomMode;
 }) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -149,6 +173,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         panelSizes: state.panelSizes,
         timelineDensity: state.timelineDensity,
         timelineNavPreferences: state.timelineNavPreferences,
+        previewQuality: state.previewQuality,
+        monitorZoom: state.monitorZoom,
       });
 
       return { activeWorkspace: workspace, collapsed: newCollapsed };
@@ -165,7 +191,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       let clamped = size;
       if (panel === 'leftSidebarWidth') clamped = Math.min(560, Math.max(260, size));
       if (panel === 'rightInspectorWidth') clamped = Math.min(500, Math.max(260, size));
-      if (panel === 'timelineHeight') clamped = Math.min(600, Math.max(160, size));
+      if (panel === 'timelineHeight') {
+        const maxH = typeof window !== 'undefined' ? Math.max(200, window.innerHeight - 180) : 600;
+        clamped = Math.min(maxH, Math.max(140, size));
+      }
 
       const newSizes = { ...state.panelSizes, [panel]: clamped };
       saveLayout({
@@ -173,6 +202,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         panelSizes: newSizes,
         timelineDensity: state.timelineDensity,
         timelineNavPreferences: state.timelineNavPreferences,
+        previewQuality: state.previewQuality,
+        monitorZoom: state.monitorZoom,
       });
       return { panelSizes: newSizes };
     });
@@ -202,12 +233,46 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  monitorZoom: 'fit',
-  setMonitorZoom: (zoom) => set({ monitorZoom: zoom }),
+  monitorZoom: initialSaved.monitorZoom || 'fit',
+  setMonitorZoom: (zoom) => {
+    set((state) => {
+      saveLayout({
+        workspace: state.activeWorkspace,
+        panelSizes: state.panelSizes,
+        timelineDensity: state.timelineDensity,
+        timelineNavPreferences: state.timelineNavPreferences,
+        previewQuality: state.previewQuality,
+        monitorZoom: zoom,
+      });
+      return { monitorZoom: zoom };
+    });
+  },
+
+  monitorCustomZoom: 1.0,
+  setMonitorCustomZoom: (zoom) => set({ monitorCustomZoom: Math.max(0.1, Math.min(8.0, zoom)) }),
+
+  previewQuality: initialSaved.previewQuality || 'auto',
+  setPreviewQuality: (quality) => {
+    set((state) => {
+      saveLayout({
+        workspace: state.activeWorkspace,
+        panelSizes: state.panelSizes,
+        timelineDensity: state.timelineDensity,
+        timelineNavPreferences: state.timelineNavPreferences,
+        previewQuality: quality,
+        monitorZoom: state.monitorZoom,
+      });
+      return { previewQuality: quality };
+    });
+  },
 
   isMonitorMaximized: false,
   toggleMonitorMaximized: () =>
     set((state) => ({ isMonitorMaximized: !state.isMonitorMaximized })),
+
+  isFocusMode: false,
+  toggleFocusMode: () => set((state) => ({ isFocusMode: !state.isFocusMode })),
+  setFocusMode: (focus) => set({ isFocusMode: focus }),
 
   timelineDensity: initialSaved.timelineDensity || 'standard',
   setTimelineDensity: (density) => {
@@ -217,6 +282,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         panelSizes: state.panelSizes,
         timelineDensity: density,
         timelineNavPreferences: state.timelineNavPreferences,
+        previewQuality: state.previewQuality,
+        monitorZoom: state.monitorZoom,
       });
       return { timelineDensity: density };
     });
@@ -245,6 +312,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         panelSizes: state.panelSizes,
         timelineDensity: state.timelineDensity,
         timelineNavPreferences: nextPrefs,
+        previewQuality: state.previewQuality,
+        monitorZoom: state.monitorZoom,
       });
 
       return { timelineNavPreferences: nextPrefs };
@@ -258,6 +327,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         panelSizes: state.panelSizes,
         timelineDensity: state.timelineDensity,
         timelineNavPreferences: DEFAULT_TIMELINE_NAV_PREFS,
+        previewQuality: state.previewQuality,
+        monitorZoom: state.monitorZoom,
       });
       return { timelineNavPreferences: DEFAULT_TIMELINE_NAV_PREFS };
     });

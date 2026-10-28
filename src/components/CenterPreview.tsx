@@ -14,9 +14,16 @@ import {
   Monitor,
   Maximize2,
   Minimize2,
+  Sliders,
+  Tv,
+  Hand,
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
-import { useWorkspaceStore, type MonitorZoomMode } from '../store/useWorkspaceStore';
+import {
+  useWorkspaceStore,
+  type MonitorZoomMode,
+  type PreviewQuality,
+} from '../store/useWorkspaceStore';
 import {
   clipTimelineToSourceTime,
   formatTimecode,
@@ -48,12 +55,33 @@ export const CenterPreview: React.FC = () => {
     setCanvasZoom,
     toggleSafeGuides,
     updateClipProperties,
-  } = useEditorSelection(['project', 'currentTime', 'isPlaying', 'canvasZoom', 'showSafeGuides', 'selectedClipId', 'setCurrentTime', 'setIsPlaying', 'togglePlayPause', 'stepFrames', 'splitSelectedClipAtPlayhead', 'setCanvasZoom', 'toggleSafeGuides', 'updateClipProperties']);
+  } = useEditorSelection([
+    'project',
+    'currentTime',
+    'isPlaying',
+    'canvasZoom',
+    'showSafeGuides',
+    'selectedClipId',
+    'setCurrentTime',
+    'setIsPlaying',
+    'togglePlayPause',
+    'stepFrames',
+    'splitSelectedClipAtPlayhead',
+    'setCanvasZoom',
+    'toggleSafeGuides',
+    'updateClipProperties',
+  ]);
 
   const monitorZoom = useWorkspaceStore((s) => s.monitorZoom);
   const setMonitorZoom = useWorkspaceStore((s) => s.setMonitorZoom);
+  const monitorCustomZoom = useWorkspaceStore((s) => s.monitorCustomZoom);
+  const setMonitorCustomZoom = useWorkspaceStore((s) => s.setMonitorCustomZoom);
+  const previewQuality = useWorkspaceStore((s) => s.previewQuality);
+  const setPreviewQuality = useWorkspaceStore((s) => s.setPreviewQuality);
   const isMonitorMaximized = useWorkspaceStore((s) => s.isMonitorMaximized);
   const toggleMonitorMaximized = useWorkspaceStore((s) => s.toggleMonitorMaximized);
+  const isFocusMode = useWorkspaceStore((s) => s.isFocusMode);
+  const toggleFocusMode = useWorkspaceStore((s) => s.toggleFocusMode);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -297,70 +325,95 @@ export const CenterPreview: React.FC = () => {
     }
   }, [currentTime, isPlaying, project.clips, project.tracks]);
 
-  // Main Canvas Render Loop (RAF driven)
+  // Pan and Zoom stage interactions
+  const [isPanning, setIsPanning] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const panStartRef = useRef<{
+    x: number;
+    y: number;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
+
+  // Track Space bar for pan cursor & activation
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      const isInput =
+        activeTag === 'input' ||
+        activeTag === 'textarea' ||
+        (document.activeElement as HTMLElement)?.isContentEditable;
+      if (isInput) return;
 
-    const sources: MediaElementSource = {
-      videoElements: videoElementsRef.current,
-      imageElements: imageElementsRef.current,
-    };
-
-    renderCompositionAtTime(ctx, project, currentTime, sources, {
-      showSafeGuides,
-      renderScale: Math.min(1, Math.max(0.1, canvas.getBoundingClientRect().width / getResolutionDimensions(project.aspectRatio, project.resolution, project.customWidth, project.customHeight).width * window.devicePixelRatio)),
-    });
-  }, [currentTime, mediaVersion, project, showSafeGuides, containerSize, monitorZoom, canvasZoom, isMonitorMaximized]);
-
-  // Direct manipulation mouse event handlers
-  useEffect(() => {
-    if (!dragMode) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const deltaX = e.clientX - dragMode.startMouseX;
-      const deltaY = e.clientY - dragMode.startMouseY;
-
-      if (dragMode.type === 'move') {
-        updateClipProperties(
-          dragMode.clipId,
-          {
-            x: Math.round(dragMode.initialX + deltaX),
-            y: Math.round(dragMode.initialY + deltaY),
-          },
-          false
-        );
-      } else if (dragMode.type === 'scale') {
-        const factor = 1 + deltaX * 0.005;
-        const nextScale = Math.max(0.1, Math.min(5, dragMode.initialScale * factor));
-        updateClipProperties(
-          dragMode.clipId,
-          { scale: Number(nextScale.toFixed(2)) },
-          false
-        );
-      } else if (dragMode.type === 'rotate') {
-        const nextRot = (dragMode.initialRotation + deltaX * 0.5) % 360;
-        updateClipProperties(
-          dragMode.clipId,
-          { rotation: Math.round(nextRot) },
-          false
-        );
+      if (e.code === 'Space' && !isSpacePressed) {
+        setIsSpacePressed(true);
       }
     };
 
-    const handleMouseUp = () => {
-      setDragMode(null);
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+        setIsPanning(false);
+      }
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [dragMode, updateClipProperties]);
+  }, [isSpacePressed]);
+
+  const handleStageMouseDown = (e: React.MouseEvent) => {
+    // Middle click (button 1) or Left click (button 0) with Space held down activates pan
+    if (e.button === 1 || (e.button === 0 && isSpacePressed)) {
+      e.preventDefault();
+      setIsPanning(true);
+      panStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        scrollLeft: containerRef.current?.scrollLeft || 0,
+        scrollTop: containerRef.current?.scrollTop || 0,
+      };
+    }
+  };
+
+  useEffect(() => {
+    if (!isPanning) return;
+    const handlePanMove = (e: MouseEvent) => {
+      if (!panStartRef.current || !containerRef.current) return;
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      containerRef.current.scrollLeft = panStartRef.current.scrollLeft - dx;
+      containerRef.current.scrollTop = panStartRef.current.scrollTop - dy;
+    };
+
+    const handlePanUp = () => {
+      setIsPanning(false);
+    };
+
+    window.addEventListener('mousemove', handlePanMove);
+    window.addEventListener('mouseup', handlePanUp);
+    return () => {
+      window.removeEventListener('mousemove', handlePanMove);
+      window.removeEventListener('mouseup', handlePanUp);
+    };
+  }, [isPanning]);
+
+  const handleStageWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      const currentScale = effectiveScale;
+      const nextScale = Math.max(
+        0.1,
+        Math.min(8.0, Number((currentScale * factor).toFixed(3)))
+      );
+      setMonitorCustomZoom(nextScale);
+      setMonitorZoom('custom');
+    }
+  };
 
   const { width: compW, height: compH } = getResolutionDimensions(
     project.aspectRatio,
@@ -386,28 +439,141 @@ export const CenterPreview: React.FC = () => {
     : null;
 
   // Responsive dynamic fit calculation using ResizeObserver dimensions
-  const availableW = Math.max(200, containerSize.width - 32);
-  const availableH = Math.max(160, containerSize.height - 32);
+  const availableW = Math.max(120, containerSize.width - 24);
+  const availableH = Math.max(120, containerSize.height - 24);
   const fitScale = Math.min(availableW / compW, availableH / compH);
+  const fillScale = Math.max(availableW / compW, availableH / compH);
 
-  let effectiveScale = fitScale;
-  if (monitorZoom === 'fill') {
-    effectiveScale = Math.max(availableW / compW, availableH / compH);
-  } else if (monitorZoom === '25') {
-    effectiveScale = fitScale * 0.25;
-  } else if (monitorZoom === '50') {
-    effectiveScale = fitScale * 0.5;
-  } else if (monitorZoom === '100') {
-    effectiveScale = 1.0;
-  } else if (monitorZoom === '200') {
-    effectiveScale = 2.0;
-  } else {
-    // 'fit'
-    effectiveScale = fitScale * (canvasZoom || 1.0);
+  let effectiveScale: number;
+  switch (monitorZoom) {
+    case 'fill':
+      effectiveScale = fillScale;
+      break;
+    case '25':
+      effectiveScale = 0.25;
+      break;
+    case '50':
+      effectiveScale = 0.5;
+      break;
+    case '75':
+      effectiveScale = 0.75;
+      break;
+    case '100':
+      effectiveScale = 1.0;
+      break;
+    case '200':
+      effectiveScale = 2.0;
+      break;
+    case '400':
+      effectiveScale = 4.0;
+      break;
+    case 'custom':
+      effectiveScale = monitorCustomZoom || fitScale;
+      break;
+    case 'fit':
+    default:
+      effectiveScale = fitScale * (canvasZoom || 1.0);
+      break;
   }
 
-  const displayWidth = Math.max(120, Math.round(compW * effectiveScale));
-  const displayHeight = Math.max(80, Math.round(compH * effectiveScale));
+  const displayWidth = Math.max(64, Math.round(compW * effectiveScale));
+  const displayHeight = Math.max(64, Math.round(compH * effectiveScale));
+
+  // Determine active preview rendering scale (Adaptive Preview Quality)
+  let activeRenderScale = 1.0;
+  if (previewQuality === 'quarter') {
+    activeRenderScale = 0.25;
+  } else if (previewQuality === 'half') {
+    activeRenderScale = 0.5;
+  } else if (previewQuality === 'full') {
+    activeRenderScale = 1.0;
+  } else {
+    // 'auto': if effective scale is <= 0.45, half raster resolution is visually identical & 4x lighter
+    if (effectiveScale <= 0.45) {
+      activeRenderScale = 0.5;
+    } else {
+      activeRenderScale = 1.0;
+    }
+  }
+
+  // Main Canvas Render Loop (RAF driven)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const sources: MediaElementSource = {
+      videoElements: videoElementsRef.current,
+      imageElements: imageElementsRef.current,
+    };
+
+    renderCompositionAtTime(ctx, project, currentTime, sources, {
+      showSafeGuides,
+      renderScale: activeRenderScale,
+    });
+  }, [
+    currentTime,
+    mediaVersion,
+    project,
+    showSafeGuides,
+    containerSize,
+    monitorZoom,
+    canvasZoom,
+    isMonitorMaximized,
+    isFocusMode,
+    activeRenderScale,
+    effectiveScale,
+  ]);
+
+  // Direct manipulation mouse event handlers (1:1 cursor locking via effectiveScale division)
+  useEffect(() => {
+    if (!dragMode) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - dragMode.startMouseX;
+      const deltaY = e.clientY - dragMode.startMouseY;
+
+      if (dragMode.type === 'move') {
+        const compDeltaX = deltaX / effectiveScale;
+        const compDeltaY = deltaY / effectiveScale;
+        updateClipProperties(
+          dragMode.clipId,
+          {
+            x: Math.round(dragMode.initialX + compDeltaX),
+            y: Math.round(dragMode.initialY + compDeltaY),
+          },
+          false
+        );
+      } else if (dragMode.type === 'scale') {
+        const factor = 1 + (deltaX / effectiveScale) * 0.003;
+        const nextScale = Math.max(0.05, Math.min(10, dragMode.initialScale * factor));
+        updateClipProperties(
+          dragMode.clipId,
+          { scale: Number(nextScale.toFixed(2)) },
+          false
+        );
+      } else if (dragMode.type === 'rotate') {
+        const nextRot = (dragMode.initialRotation + deltaX * 0.5) % 360;
+        updateClipProperties(
+          dragMode.clipId,
+          { rotation: Math.round(nextRot) },
+          false
+        );
+      }
+    };
+
+    const handleMouseUp = () => {
+      setDragMode(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragMode, effectiveScale, updateClipProperties]);
 
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -416,6 +582,29 @@ export const CenterPreview: React.FC = () => {
       document.exitFullscreen().catch(() => {});
     }
   };
+  // Direct manipulation layer box coordinates
+  const clipScreenCenterX =
+    displayWidth / 2 +
+    (evaluatedSelectedTransform ? (evaluatedSelectedTransform.x / compW) * displayWidth : 0);
+  const clipScreenCenterY =
+    displayHeight / 2 +
+    (evaluatedSelectedTransform ? (evaluatedSelectedTransform.y / compH) * displayHeight : 0);
+
+  const layerBaseW =
+    selectedVisualClip?.shapeStyle?.width ||
+    (selectedVisualClip?.type === 'text' ? 600 : compW * 0.75);
+  const layerBaseH =
+    selectedVisualClip?.shapeStyle?.height ||
+    (selectedVisualClip?.type === 'text' ? 180 : compH * 0.75);
+
+  const gizmoWidth = Math.max(
+    40,
+    layerBaseW * effectiveScale * (evaluatedSelectedTransform?.scale || 1)
+  );
+  const gizmoHeight = Math.max(
+    30,
+    layerBaseH * effectiveScale * (evaluatedSelectedTransform?.scale || 1)
+  );
 
   return (
     <main
@@ -434,7 +623,7 @@ export const CenterPreview: React.FC = () => {
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Safe-Area Guides Toggle */}
           <button
             type="button"
@@ -451,6 +640,26 @@ export const CenterPreview: React.FC = () => {
             <span className="hidden sm:inline">Safe Guides</span>
           </button>
 
+          {/* Preview Quality / Resolution Selector */}
+          <div className="flex items-center gap-1 bg-[#0B0F16] border border-[#2A3341] rounded-md pl-2 pr-1 h-6">
+            <Sliders className="w-3 h-3 text-[#94A3B8] shrink-0" />
+            <select
+              aria-label="Preview Quality"
+              data-testid="preview-quality-select"
+              value={previewQuality}
+              onChange={(e) => setPreviewQuality(e.target.value as PreviewQuality)}
+              className="bg-transparent pr-3 text-[11px] font-mono text-[#E8EDF5] focus:outline-none cursor-pointer"
+              title="Preview Rendering Resolution (Exports always render at 100% full master resolution)"
+            >
+              <option value="auto" className="bg-[#141A23]">
+                Auto ({activeRenderScale === 1.0 ? 'Full' : 'Half'})
+              </option>
+              <option value="full" className="bg-[#141A23]">Full (100%)</option>
+              <option value="half" className="bg-[#141A23]">Half (50%)</option>
+              <option value="quarter" className="bg-[#141A23]">Quarter (25%)</option>
+            </select>
+          </div>
+
           {/* Canvas Zoom Selector */}
           <div className="flex items-center gap-1 bg-[#0B0F16] border border-[#2A3341] rounded-md pl-2 pr-1 h-6">
             <ZoomIn className="w-3 h-3 text-[#94A3B8] shrink-0" />
@@ -462,19 +671,44 @@ export const CenterPreview: React.FC = () => {
                 const val = e.target.value as MonitorZoomMode;
                 setMonitorZoom(val);
                 if (val === 'fit') setCanvasZoom(1);
-                else if (val === '50') setCanvasZoom(0.5);
-                else if (val === '100') setCanvasZoom(1);
               }}
-              className="bg-transparent pr-4 text-[11px] font-mono text-[#E8EDF5] focus:outline-none cursor-pointer"
+              className="bg-transparent pr-3 text-[11px] font-mono text-[#E8EDF5] focus:outline-none cursor-pointer"
             >
-              <option value="fit" className="bg-[#141A23]">Fit to View</option>
-              <option value="fill" className="bg-[#141A23]">Fill View</option>
+              <option value="fit" className="bg-[#141A23]">
+                Fit ({Math.round(fitScale * 100)}%)
+              </option>
+              <option value="fill" className="bg-[#141A23]">
+                Fill ({Math.round(fillScale * 100)}%)
+              </option>
               <option value="25" className="bg-[#141A23]">25%</option>
               <option value="50" className="bg-[#141A23]">50%</option>
+              <option value="75" className="bg-[#141A23]">75%</option>
               <option value="100" className="bg-[#141A23]">100%</option>
               <option value="200" className="bg-[#141A23]">200%</option>
+              <option value="400" className="bg-[#141A23]">400%</option>
+              {monitorZoom === 'custom' && (
+                <option value="custom" className="bg-[#141A23]">
+                  Custom ({Math.round(effectiveScale * 100)}%)
+                </option>
+              )}
             </select>
           </div>
+
+          {/* Focus / Cinema Mode Toggle */}
+          <button
+            type="button"
+            data-testid="toggle-focus-mode-btn"
+            onClick={toggleFocusMode}
+            className={`h-6 px-2 rounded-md border text-[11px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+              isFocusMode
+                ? 'bg-[#8B82F6] text-white border-[#8B82F6]'
+                : 'bg-[#0B0F16] border-[#2A3341] text-[#94A3B8] hover:text-[#E8EDF5]'
+            }`}
+            title="Toggle Focus / Cinema Mode (F or Esc)"
+          >
+            <Tv className="w-3 h-3" />
+            <span className="hidden lg:inline">Focus (F)</span>
+          </button>
 
           {/* Maximize Monitor Toggle */}
           <button
@@ -497,11 +731,16 @@ export const CenterPreview: React.FC = () => {
         </div>
       </div>
 
-      {/* Center Canvas Stage Container with ResizeObserver */}
+      {/* Center Canvas Stage Container with ResizeObserver, Pan, and Ctrl+Wheel Zoom */}
       <div
         ref={containerRef}
+        onWheel={handleStageWheel}
+        onMouseDown={handleStageMouseDown}
         onDoubleClick={toggleMonitorMaximized}
-        className="flex-1 overflow-auto flex flex-col items-center justify-center p-4 relative bg-[#070A0F]"
+        style={{
+          cursor: isPanning ? 'grabbing' : isSpacePressed ? 'grab' : 'default',
+        }}
+        className="flex-1 overflow-auto flex flex-col items-center justify-center p-2 sm:p-2.5 relative bg-[#070A0F]"
       >
         <div
           style={{ width: displayWidth, height: displayHeight }}
@@ -510,8 +749,6 @@ export const CenterPreview: React.FC = () => {
           <canvas
             ref={canvasRef}
             data-testid="preview-canvas"
-            width={compW}
-            height={compH}
             className="w-full h-full block"
           />
 
@@ -564,6 +801,7 @@ export const CenterPreview: React.FC = () => {
             <div
               data-testid="direct-manipulation-gizmo"
               onMouseDown={(e) => {
+                if (isSpacePressed) return;
                 e.stopPropagation();
                 useEditorStore.getState().pushHistory();
                 setDragMode({
@@ -578,21 +816,20 @@ export const CenterPreview: React.FC = () => {
                 });
               }}
               style={{
-                transform: `translate(${
-                  (evaluatedSelectedTransform.x / compW) * displayWidth
-                }px, ${
-                  (evaluatedSelectedTransform.y / compH) * displayHeight
-                }px) rotate(${evaluatedSelectedTransform.rotation}deg) scale(${
-                  evaluatedSelectedTransform.scale
-                })`,
+                width: `${gizmoWidth}px`,
+                height: `${gizmoHeight}px`,
+                left: `${clipScreenCenterX}px`,
+                top: `${clipScreenCenterY}px`,
+                transform: `translate(-50%, -50%) rotate(${evaluatedSelectedTransform.rotation}deg)`,
               }}
-              className="absolute inset-6 border border-[#8B82F6] cursor-move pointer-events-auto"
+              className="absolute border border-[#8B82F6] cursor-move pointer-events-auto"
               title="Drag to position layer, drag corners to scale, drag top handle to rotate"
             >
               {/* Rotation Handle */}
               <div
                 data-testid="gizmo-rotate-handle"
                 onMouseDown={(e) => {
+                  if (isSpacePressed) return;
                   e.stopPropagation();
                   useEditorStore.getState().pushHistory();
                   setDragMode({
@@ -618,6 +855,7 @@ export const CenterPreview: React.FC = () => {
                     key={corner}
                     data-testid={`gizmo-scale-${corner}`}
                     onMouseDown={(e) => {
+                      if (isSpacePressed) return;
                       e.stopPropagation();
                       useEditorStore.getState().pushHistory();
                       setDragMode({

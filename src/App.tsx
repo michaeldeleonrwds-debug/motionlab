@@ -54,6 +54,9 @@ export const App: React.FC = () => {
   const togglePanelCollapsed = useWorkspaceStore((s) => s.togglePanelCollapsed);
   const isMonitorMaximized = useWorkspaceStore((s) => s.isMonitorMaximized);
   const toggleMonitorMaximized = useWorkspaceStore((s) => s.toggleMonitorMaximized);
+  const isFocusMode = useWorkspaceStore((s) => s.isFocusMode);
+  const toggleFocusMode = useWorkspaceStore((s) => s.toggleFocusMode);
+  const setFocusMode = useWorkspaceStore((s) => s.setFocusMode);
   const isCommandPaletteOpen = useWorkspaceStore((s) => s.isCommandPaletteOpen);
   const toggleCommandPalette = useWorkspaceStore((s) => s.toggleCommandPalette);
   const setCommandPaletteOpen = useWorkspaceStore((s) => s.setCommandPaletteOpen);
@@ -353,14 +356,41 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Fit Sequence (F or Shift+Z)
+      // Fit Timeline Sequence (Shift+Z)
       if (
-        (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) ||
-        (e.shiftKey && e.key.toLowerCase() === 'z' && !e.ctrlKey && !e.metaKey && !e.altKey)
+        e.shiftKey &&
+        e.key.toLowerCase() === 'z' &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
       ) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent('motionlab:fit-timeline'));
         return;
+      }
+
+      // Focus / Cinema Mode Toggle (F or Ctrl+\)
+      if (
+        (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) ||
+        ((e.ctrlKey || e.metaKey) && e.key === '\\')
+      ) {
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+      }
+
+      // Escape: Exit Focus Mode or Maximized Monitor
+      if (e.key === 'Escape') {
+        if (isFocusMode) {
+          e.preventDefault();
+          setFocusMode(false);
+          return;
+        }
+        if (isMonitorMaximized) {
+          e.preventDefault();
+          toggleMonitorMaximized();
+          return;
+        }
       }
 
       // Home: Jump to sequence start (0s)
@@ -397,10 +427,13 @@ export const App: React.FC = () => {
   }, [
     isCommandPaletteOpen,
     isMonitorMaximized,
+    isFocusMode,
     setActiveWorkspace,
     setCommandPaletteOpen,
     toggleCommandPalette,
     toggleMonitorMaximized,
+    toggleFocusMode,
+    setFocusMode,
   ]);
 
   return (
@@ -409,23 +442,32 @@ export const App: React.FC = () => {
       className="h-screen w-screen flex flex-col bg-[#0B0F16] text-[#E8EDF5] overflow-hidden select-none"
     >
       {/* Top Application Bar */}
-      <TopBar />
+      {!isFocusMode && <TopBar />}
 
       {/* Main Production Workspace Body */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Full-Screen Maximized Program Monitor Mode */}
-        {isMonitorMaximized ? (
+        {/* Full-Screen Maximized Program Monitor Mode OR Focus Mode */}
+        {isMonitorMaximized || isFocusMode ? (
           <div className="flex-1 flex flex-col h-full relative bg-[#070A0F]">
             <CenterPreview />
-            <button
-              type="button"
-              onClick={toggleMonitorMaximized}
-              className="absolute top-12 right-4 z-40 bg-[#141A23]/90 hover:bg-[#1D2531] border border-[#2A3341] text-[#E8EDF5] px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-xl cursor-pointer backdrop-blur-xs"
-              title="Exit Maximized View (Esc)"
-            >
-              <Minimize2 className="w-3.5 h-3.5" />
-              <span>Restore Workspace (Esc)</span>
-            </button>
+            <div className="absolute top-3 right-4 z-40 flex items-center gap-2">
+              <span className="hidden sm:inline text-[11px] font-mono px-2 py-1 bg-[#141A23]/80 border border-[#2A3341] rounded text-[#94A3B8]">
+                {isFocusMode ? 'Cinema Focus Mode' : 'Maximized Monitor'}
+              </span>
+              <button
+                type="button"
+                data-testid="exit-focus-mode-btn"
+                onClick={() => {
+                  if (isFocusMode) setFocusMode(false);
+                  if (isMonitorMaximized) toggleMonitorMaximized();
+                }}
+                className="bg-[#141A23]/90 hover:bg-[#1D2531] border border-[#2A3341] text-[#E8EDF5] px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-xl cursor-pointer backdrop-blur-xs"
+                title="Exit Maximized / Focus View (Esc)"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>Restore Workspace (Esc)</span>
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -474,7 +516,12 @@ export const App: React.FC = () => {
                         panelSizes.timelineHeight - delta
                       )
                     }
-                    onReset={resetPanelSizes}
+                    onReset={() => {
+                      const isPortrait =
+                        project.aspectRatio === '9:16' ||
+                        project.aspectRatio === '4:5';
+                      setPanelSize('timelineHeight', isPortrait ? 220 : 260);
+                    }}
                   />
                   <TimelinePanel />
                 </div>
@@ -526,7 +573,12 @@ export const App: React.FC = () => {
                         panelSizes.timelineHeight - delta
                       )
                     }
-                    onReset={resetPanelSizes}
+                    onReset={() => {
+                      const isPortrait =
+                        project.aspectRatio === '9:16' ||
+                        project.aspectRatio === '4:5';
+                      setPanelSize('timelineHeight', isPortrait ? 220 : 260);
+                    }}
                   />
                   <TimelinePanel />
                 </div>
@@ -566,7 +618,12 @@ export const App: React.FC = () => {
                       panelSizes.timelineHeight - delta
                     )
                   }
-                  onReset={resetPanelSizes}
+                  onReset={() => {
+                    const isPortrait =
+                      project.aspectRatio === '9:16' ||
+                      project.aspectRatio === '4:5';
+                    setPanelSize('timelineHeight', isPortrait ? 220 : 260);
+                  }}
                 />
                 <div
                   style={{ height: `${panelSizes.timelineHeight}px` }}
