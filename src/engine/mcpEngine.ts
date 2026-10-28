@@ -26,6 +26,10 @@ import type {
   TrackType,
   TransitionType,
 } from '../types/editor';
+import { soundboxAdapter } from '../sfx/SoundboxAdapter';
+import { searchSoundLibrary } from '../sfx/soundLibrary';
+import { generatePresetLUT } from '../videoFx/colorEngine';
+import type { VideoEffect, ColorCorrectionParams } from '../videoFx/types';
 
 export interface McpToolDefinition {
   name: string;
@@ -438,6 +442,60 @@ export const MOTIONLAB_MCP_TOOLS: McpToolDefinition[] = [
         flipH: { type: 'boolean' },
         flipV: { type: 'boolean' },
       },
+    },
+  },
+  {
+    name: 'sfx_generate',
+    description: 'Synthesize a high-quality sound effect using Soundbox AI and return its audio URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Semantic prompt describing desired sound effect' },
+        duration: { type: 'number', description: 'Duration in seconds (0.3 to 8.0, default 1.2)' },
+        model: { type: 'string', description: 'Synthesis model ID (defaults to stable-audio-sfx-small)' },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
+    name: 'sfx_search',
+    description: 'Search curated offline CC0/MIT sound effects library across 14 categories.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search keywords (whoosh, impact, click, riser...)' },
+        category: { type: 'string', description: 'Optional category filter' },
+      },
+    },
+  },
+  {
+    name: 'video_fx_apply',
+    description: 'Apply non-destructive primary color correction or creative video filters (vignette, film grain, blur) to a clip.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        clipId: { type: 'string', description: 'Optional clip ID' },
+        exposure: { type: 'number', description: '-100 to 100' },
+        contrast: { type: 'number', description: '-100 to 100' },
+        saturation: { type: 'number', description: '-100 to 100' },
+        temperature: { type: 'number', description: '-100 to 100' },
+        tint: { type: 'number', description: '-100 to 100' },
+        vignette: { type: 'boolean', description: 'Enable cinematic vignette' },
+        filmGrain: { type: 'boolean', description: 'Enable 35mm film grain' },
+      },
+    },
+  },
+  {
+    name: 'video_fx_apply_lut',
+    description: 'Apply a cinematic 3D LUT preset (angora-editorial, clean-commercial, forest-cinematic, warm-film-35mm, cool-corporate, noir-monochrome) to a clip.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        clipId: { type: 'string', description: 'Optional clip ID' },
+        presetId: { type: 'string', description: 'Preset ID' },
+        intensity: { type: 'number', description: '0.0 to 1.0 (default 1.0)' },
+      },
+      required: ['presetId'],
     },
   },
   {
@@ -1496,6 +1554,147 @@ export async function executeMcpToolCall(
       return {
         ok: true,
         clipId,
+        state: buildCompactProjectSummary(),
+      };
+    }
+
+    case 'sfx_generate': {
+      const prompt = String(args.prompt || '').trim();
+      if (!prompt) throw new Error('Prompt is required for sound generation.');
+      const durationSeconds = typeof args.duration === 'number' ? args.duration : 1.2;
+      const model = typeof args.model === 'string' ? args.model : 'stable-audio-sfx-small';
+      const result = await soundboxAdapter.generateSound({ prompt, durationSeconds, model });
+      return {
+        ok: true,
+        soundId: result.id,
+        name: result.name,
+        durationSeconds: result.durationSeconds,
+        peakDb: result.peakLevelDb,
+        rmsDb: result.rmsLevelDb,
+        format: result.format,
+        qualityReport: result.qualityReport,
+      };
+    }
+
+    case 'sfx_search': {
+      const query = typeof args.query === 'string' ? args.query : '';
+      const category = typeof args.category === 'string' ? (args.category as any) : 'All';
+      const results = searchSoundLibrary({ query, category });
+      return {
+        ok: true,
+        count: results.length,
+        results: results.map((r) => ({
+          id: r.id,
+          name: r.name,
+          category: r.category,
+          duration: r.duration,
+          url: r.url,
+          tags: r.tags,
+        })),
+      };
+    }
+
+    case 'video_fx_apply': {
+      const clipId = resolveTargetClipId(args.clipId);
+      if (!clipId) throw new Error('No clip found for Video FX application.');
+      const clip = useEditorStore.getState().project.clips.find((c) => c.id === clipId);
+      if (!clip) throw new Error(`Clip ${clipId} not found.`);
+
+      const existingStack = clip.videoEffects || [];
+      const updatedStack = [...existingStack];
+
+      // Update primary color correction
+      const colorKeys = ['exposure', 'contrast', 'saturation', 'temperature', 'tint'];
+      const hasColorUpdate = colorKeys.some((k) => args[k] !== undefined);
+      if (hasColorUpdate) {
+        const gradeIdx = updatedStack.findIndex((e) => e.type === 'color-correction');
+        const prevParams = (gradeIdx >= 0 ? updatedStack[gradeIdx].params : {}) as Record<string, unknown>;
+        const newParams = { ...prevParams };
+        for (const k of colorKeys) {
+          if (typeof args[k] === 'number') newParams[k] = args[k];
+        }
+        const gradeEffect: VideoEffect = {
+          id: gradeIdx >= 0 ? updatedStack[gradeIdx].id : `fx-grade-${Date.now().toString(36)}`,
+          type: 'color-correction',
+          name: 'Primary Grade',
+          enabled: true,
+          params: newParams as any,
+        };
+        if (gradeIdx >= 0) updatedStack[gradeIdx] = gradeEffect;
+        else updatedStack.push(gradeEffect);
+      }
+
+      // Vignette toggle
+      if (typeof args.vignette === 'boolean') {
+        const vigIdx = updatedStack.findIndex((e) => e.type === 'vignette');
+        if (args.vignette && vigIdx < 0) {
+          updatedStack.push({
+            id: `fx-vig-${Date.now().toString(36)}`,
+            type: 'vignette',
+            name: 'Vignette',
+            enabled: true,
+            params: { amount: 0.5, radius: 0.75, feather: 0.5, roundness: 1.0 },
+          });
+        } else if (!args.vignette && vigIdx >= 0) {
+          updatedStack.splice(vigIdx, 1);
+        }
+      }
+
+      useEditorStore.setState((state) => ({
+        project: {
+          ...state.project,
+          clips: state.project.clips.map((c) => (c.id === clipId ? { ...c, videoEffects: updatedStack } : c)),
+          updatedAt: Date.now(),
+        },
+      }));
+
+      return {
+        ok: true,
+        clipId,
+        effectsCount: updatedStack.length,
+        state: buildCompactProjectSummary(),
+      };
+    }
+
+    case 'video_fx_apply_lut': {
+      const clipId = resolveTargetClipId(args.clipId);
+      if (!clipId) throw new Error('No clip found for 3D LUT.');
+      const clip = useEditorStore.getState().project.clips.find((c) => c.id === clipId);
+      if (!clip) throw new Error(`Clip ${clipId} not found.`);
+
+      const presetId = String(args.presetId || 'angora-editorial');
+      const intensity = typeof args.intensity === 'number' ? args.intensity : 1.0;
+      const lutData = generatePresetLUT(presetId, 17);
+
+      const existingStack = (clip.videoEffects || []).filter((e) => e.type !== 'lut');
+      const newLut: VideoEffect = {
+        id: `fx-lut-${Date.now().toString(36)}`,
+        type: 'lut',
+        name: `LUT: ${presetId}`,
+        enabled: true,
+        params: {
+          presetId,
+          name: presetId,
+          intensity,
+          cubeSize: 17,
+          cubeData: lutData,
+        },
+      };
+
+      const updatedStack = [...existingStack, newLut];
+      useEditorStore.setState((state) => ({
+        project: {
+          ...state.project,
+          clips: state.project.clips.map((c) => (c.id === clipId ? { ...c, videoEffects: updatedStack } : c)),
+          updatedAt: Date.now(),
+        },
+      }));
+
+      return {
+        ok: true,
+        clipId,
+        appliedLut: presetId,
+        intensity,
         state: buildCompactProjectSummary(),
       };
     }

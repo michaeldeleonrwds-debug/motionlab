@@ -56,6 +56,7 @@ export type LeftSidebarTab =
   | 'media'
   | 'text'
   | 'audio'
+  | 'sfx'
   | 'voice'
   | 'transitions'
   | 'effects'

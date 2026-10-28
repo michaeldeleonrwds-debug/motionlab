@@ -20,12 +20,15 @@ import {
   Loader2,
   FolderKanban,
   Mic,
+  Volume2,
 } from 'lucide-react';
 import { useEditorStore, type LeftSidebarTab } from '../store/useEditorStore';
 import { importMediaFile } from '../engine/mediaImportEngine';
 import type { MediaAsset, TextStyle, TransitionType } from '../types/editor';
 import { createDefaultColorEffects } from '../engine/projectFactory';
 import { VoiceStudioPanel } from '../voicebox/VoiceStudioPanel';
+import { SoundFxStudioPanel } from '../sfx/SoundFxStudioPanel';
+import { VideoFxStudioPanel } from './VideoFxStudioPanel';
 
 const NAV_ITEMS: {
   id: LeftSidebarTab;
@@ -35,10 +38,11 @@ const NAV_ITEMS: {
   { id: 'media', label: 'Media', icon: FolderOpen },
   { id: 'text', label: 'Titles', icon: Type },
   { id: 'audio', label: 'Audio', icon: Music },
+  { id: 'sfx', label: 'SFX', icon: Volume2 },
   { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'transitions', label: 'Moves', icon: ArrowRightLeft },
   { id: 'effects', label: 'FX', icon: Wand2 },
-  { id: 'filters', label: 'LUTs', icon: Sliders },
+  { id: 'filters', label: 'Color', icon: Sliders },
   { id: 'ai-mcp', label: 'Copilot', icon: Sparkles },
   { id: 'projects', label: 'Bins', icon: FolderKanban },
 ];
@@ -299,7 +303,7 @@ export const LeftPanel: React.FC = () => {
   );
 
   return (
-    <aside className={`${activeLeftTab === 'voice' ? 'w-[420px]' : 'w-[336px]'} bg-[#0c0c10] border-r border-[#1f1f26] flex shrink-0 select-none h-full overflow-hidden transition-all duration-150`}>
+    <aside className={`${activeLeftTab === 'voice' || activeLeftTab === 'sfx' || activeLeftTab === 'filters' ? 'w-[420px]' : 'w-[336px]'} bg-[#0c0c10] border-r border-[#1f1f26] flex shrink-0 select-none h-full overflow-hidden transition-all duration-150`}>
       {/* Minimalist Linear Vertical Icon Dock */}
       <nav className="w-13 bg-[#09090c] border-r border-[#1f1f26] flex flex-col items-center py-2.5 gap-1 shrink-0">
         {NAV_ITEMS.map((item) => {
@@ -924,74 +928,10 @@ export const LeftPanel: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 6: FILTERS / COLOR GRADING */}
+        {/* TAB 6: COLOR STUDIO & VIDEO FX */}
         {activeLeftTab === 'filters' && (
-          <div className="flex-1 flex flex-col h-full overflow-y-auto p-3 space-y-3">
-            <div className="text-xs font-semibold tracking-tight text-[#f4f4f5]">
-              Color Grading Filters
-            </div>
-            {[
-              {
-                id: 'noir-mono',
-                name: 'Monochrome Noir',
-                desc: '100% Grayscale • +25 Contrast',
-                fx: { ...createDefaultColorEffects(), grayscale: 100, contrast: 25 },
-              },
-              {
-                id: 'vintage-sepia',
-                name: 'Archival 16mm Sepia',
-                desc: '85% Sepia • -10 Sat • +8 Bright',
-                fx: {
-                  ...createDefaultColorEffects(),
-                  sepia: 85,
-                  saturation: -10,
-                  brightness: 8,
-                },
-              },
-              {
-                id: 'vibrant-cinema',
-                name: 'Vibrant Broadcast Grade',
-                desc: '+35 Saturation • +18 Contrast',
-                fx: {
-                  ...createDefaultColorEffects(),
-                  saturation: 35,
-                  contrast: 18,
-                },
-              },
-              {
-                id: 'neutral-grade',
-                name: 'Rec.709 Neutral Reset',
-                desc: 'Bypass all color filters',
-                fx: createDefaultColorEffects(),
-              },
-            ].map((lut) => (
-              <div
-                key={lut.id}
-                className="bg-[#121217] border border-[#22222c] p-2.5 rounded-lg flex items-center justify-between gap-2"
-              >
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-[#f4f4f5] truncate">
-                    {lut.name}
-                  </div>
-                  <div className="text-[10px] font-mono text-[#71717a] truncate">
-                    {lut.desc}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  data-testid={`apply-filter-${lut.id}`}
-                  disabled={!selectedClipId}
-                  onClick={() => {
-                    if (selectedClipId) {
-                      updateClipColorEffects(selectedClipId, lut.fx);
-                    }
-                  }}
-                  className="h-7 px-2.5 bg-[#191922] hover:bg-[#5e6ad2] border border-[#282836] disabled:opacity-35 text-xs text-white rounded-md shrink-0 whitespace-nowrap cursor-pointer"
-                >
-                  Apply
-                </button>
-              </div>
-            ))}
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <VideoFxStudioPanel />
           </div>
         )}
 
@@ -1032,6 +972,13 @@ export const LeftPanel: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB 8.5: SOUND FX STUDIO */}
+        {activeLeftTab === 'sfx' && (
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <SoundFxStudioPanel />
           </div>
         )}
 

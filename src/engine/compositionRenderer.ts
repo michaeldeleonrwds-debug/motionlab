@@ -3,6 +3,7 @@ import type {
   ProjectData,
   TimelineClip,
 } from '../types/editor';
+import type { VideoEffect, ColorCorrectionParams, VignetteParams } from '../videoFx/types';
 import {
   getCompositedVisualClipsAtTime,
   getResolutionDimensions,
@@ -23,25 +24,49 @@ export interface MediaElementSource {
  * Converts ColorEffects into a deterministic CanvasRenderingContext2D filter string.
  * Exposure is mapped to an exponential brightness multiplier combined with base brightness.
  */
-export function buildCanvasFilterString(effects: ColorEffects): string {
+export function buildCanvasFilterString(
+  effects: ColorEffects,
+  videoEffects?: VideoEffect[]
+): string {
   const filters: string[] = [];
 
+  const gradeEffect = videoEffects?.find((e) => e.enabled && e.type === 'color-correction');
+  const grade = gradeEffect?.params as ColorCorrectionParams | undefined;
+
+  const exposure = grade ? grade.exposure : effects.exposure;
+  const contrast = grade ? grade.contrast : effects.contrast;
+  const saturation = grade ? grade.saturation : effects.saturation;
+  const temperature = grade ? grade.temperature : 0;
+  const tint = grade ? grade.tint : 0;
+
   const baseBrightness = 1 + effects.brightness / 100;
-  const exposureMultiplier = Math.pow(2, effects.exposure / 65);
+  const exposureMultiplier = Math.pow(2, exposure / 65);
   const totalBrightness = Math.max(0, baseBrightness * exposureMultiplier);
 
   if (Math.abs(totalBrightness - 1) > 0.005) {
     filters.push(`brightness(${(totalBrightness * 100).toFixed(1)}%)`);
   }
 
-  if (Math.abs(effects.contrast) > 0.5) {
-    const contrastPct = Math.max(0, 100 + effects.contrast);
+  if (Math.abs(contrast) > 0.5) {
+    const contrastPct = Math.max(0, 100 + contrast);
     filters.push(`contrast(${contrastPct.toFixed(1)}%)`);
   }
 
-  if (Math.abs(effects.saturation) > 0.5) {
-    const satPct = Math.max(0, 100 + effects.saturation);
+  if (Math.abs(saturation) > 0.5) {
+    const satPct = Math.max(0, 100 + saturation);
     filters.push(`saturate(${satPct.toFixed(1)}%)`);
+  }
+
+  if (temperature !== 0) {
+    if (temperature > 0) {
+      filters.push(`sepia(${(temperature * 0.3).toFixed(1)}%)`);
+    } else {
+      filters.push(`hue-rotate(${(temperature * 0.35).toFixed(1)}deg)`);
+    }
+  }
+
+  if (tint !== 0) {
+    filters.push(`hue-rotate(${(tint * 0.25).toFixed(1)}deg)`);
   }
 
   if (effects.grayscale > 0.5) {
@@ -52,8 +77,10 @@ export function buildCanvasFilterString(effects: ColorEffects): string {
     filters.push(`sepia(${Math.min(100, effects.sepia).toFixed(1)}%)`);
   }
 
-  if (effects.blur > 0.1) {
-    filters.push(`blur(${effects.blur.toFixed(1)}px)`);
+  const blurEffect = videoEffects?.find((e) => e.enabled && e.type === 'gaussian-blur');
+  const blurRadius = blurEffect ? (blurEffect.params as { radiusPx: number }).radiusPx : effects.blur;
+  if (blurRadius > 0.1) {
+    filters.push(`blur(${blurRadius.toFixed(1)}px)`);
   }
 
   return filters.length > 0 ? filters.join(' ') : 'none';
@@ -1223,7 +1250,7 @@ function renderSingleClipLayer(
   }
 
   ctx.globalAlpha = effectiveOpacity;
-  const filterStr = buildCanvasFilterString(clip.effects);
+  const filterStr = buildCanvasFilterString(clip.effects, clip.videoEffects);
   const featherBlur = clip.mask && clip.mask.shape !== 'none' && clip.mask.feather > 0.2
     ? `blur(${(clip.mask.feather * scaleFactor * 0.25).toFixed(1)}px)`
     : '';
@@ -1283,6 +1310,23 @@ function renderSingleClipLayer(
         applyClipMask(ctx, clip, transform, drawW, drawH, scaleFactor);
 
         ctx.drawImage(sourceEl, -drawW / 2, -drawH / 2, drawW, drawH);
+
+        // Nondestructive Video FX overlays (Vignette)
+        if (clip.videoEffects && clip.videoEffects.length > 0) {
+          const vig = clip.videoEffects.find((e) => e.enabled && e.type === 'vignette');
+          if (vig) {
+            const p = vig.params as VignetteParams;
+            const maxR = Math.sqrt((drawW * drawW + drawH * drawH) / 4) * (p.radius || 0.75);
+            const inR = maxR * (1 - (p.feather || 0.5));
+            const vigGrad = ctx.createRadialGradient(0, 0, Math.max(0, inR), 0, 0, maxR);
+            vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
+            vigGrad.addColorStop(1, `rgba(0,0,0,${Math.min(1.0, p.amount || 0.5)})`);
+            ctx.save();
+            ctx.fillStyle = vigGrad;
+            ctx.fillRect(-drawW / 2, -drawH / 2, drawW, drawH);
+            ctx.restore();
+          }
+        }
       }
     }
   } else if (clip.type === 'text' && clip.textStyle) {

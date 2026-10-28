@@ -1,3 +1,5 @@
+import type { VideoEffect } from '../videoFx/types';
+
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5' | 'custom';
 export type ResolutionPreset = '1080p' | '720p';
 export type FrameRate = 24 | 30 | 60;
@@ -204,6 +206,8 @@ export interface TimelineClip {
   crop: CropSettings;
   mask?: MaskSettings;
   effects: ColorEffects;
+  /** Nondestructive Video FX & Color Grade stack */
+  videoEffects?: VideoEffect[];
   /** Audio volume 0..2 (1 = 100%) */
   volume: number;
   muted: boolean;

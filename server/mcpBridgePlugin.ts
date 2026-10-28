@@ -1100,7 +1100,8 @@ export function mcpBridgePlugin(): Plugin {
     if (
       !url.startsWith('/api/mcp') &&
       !url.startsWith('/api/memory') &&
-      !url.startsWith('/api/voicebox')
+      !url.startsWith('/api/voicebox') &&
+      !url.startsWith('/api/soundbox')
     ) {
       next();
       return;
@@ -1206,6 +1207,93 @@ export function mcpBridgePlugin(): Plugin {
             ok: false,
             error: 'Kokoro Neural TTS backend unreachable',
             fallbackAvailable: false,
+          });
+          return;
+        }
+      }
+
+      // ==========================================
+      // Soundbox Local REST Proxy (with SSRF Protection)
+      // ==========================================
+      if (pathname.startsWith('/api/soundbox')) {
+        const SOUNDBOX_UPSTREAM = process.env.SOUNDBOX_URL || 'http://127.0.0.1:17494';
+        const upstreamUrl = new URL(SOUNDBOX_UPSTREAM);
+        if (
+          upstreamUrl.hostname !== '127.0.0.1' &&
+          upstreamUrl.hostname !== 'localhost'
+        ) {
+          sendJson(res, 403, { ok: false, error: 'SSRF blocked: Soundbox upstream must be a local loopback address' });
+          return;
+        }
+
+        const subPath = pathname.replace('/api/soundbox', '') || '/';
+
+        if (subPath === '/health') {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 2000);
+            const check = await fetch(`${SOUNDBOX_UPSTREAM}/api/health`, {
+              signal: controller.signal,
+            }).finally(() => clearTimeout(timer));
+
+            if (check.ok) {
+              const data = (await check.json()) as Record<string, any>;
+              sendJson(res, 200, {
+                ok: true,
+                connected: true,
+                version: data.version || '1.2.0-audiocpp',
+                device: data.device || 'cpu',
+                loaded_model: data.loaded_model || 'stable-audio-sfx-small',
+                queue_length: data.queue_length || 0,
+              });
+              return;
+            }
+          } catch {
+            // Soundbox offline
+          }
+          sendJson(res, 200, {
+            ok: false,
+            connected: false,
+            version: 'offline',
+            error: 'Soundbox service offline on port 17494',
+          });
+          return;
+        }
+
+        try {
+          const bodyData = (req.method === 'POST' || req.method === 'PUT') ? await readBodyJson(req) : undefined;
+          const upstreamRes = await fetch(`${SOUNDBOX_UPSTREAM}${subPath}${parsedUrl.search}`, {
+            method: req.method,
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: req.headers.accept || '*/*',
+              'X-Soundbox': '1',
+            },
+            body: bodyData ? JSON.stringify(bodyData) : undefined,
+          });
+
+          res.statusCode = upstreamRes.status;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader(
+            'Access-Control-Expose-Headers',
+            'X-Audio-Duration, X-Audio-Sample-Rate, X-Audio-Quality, Content-Length'
+          );
+          const contentType = upstreamRes.headers.get('content-type');
+          if (contentType) res.setHeader('Content-Type', contentType);
+          const duration = upstreamRes.headers.get('x-audio-duration');
+          if (duration) res.setHeader('X-Audio-Duration', duration);
+          const sampleRate = upstreamRes.headers.get('x-audio-sample-rate');
+          if (sampleRate) res.setHeader('X-Audio-Sample-Rate', sampleRate);
+          const quality = upstreamRes.headers.get('x-audio-quality');
+          if (quality) res.setHeader('X-Audio-Quality', quality);
+
+          const arrayBuf = await upstreamRes.arrayBuffer();
+          res.end(Buffer.from(arrayBuf));
+          return;
+        } catch {
+          sendJson(res, 503, {
+            ok: false,
+            error: 'Soundbox backend unreachable on port 17494',
           });
           return;
         }
